@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%" shape-rendering="geometricPrecision">
+  <defs>
+    <!-- App shell gradient: deep navy to dark obsidian -->
+    <linearGradient id="shellGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#0b0f1a"/>
+      <stop offset="100%" stop-color="#060910"/>
+    </linearGradient>
+
+    <!-- Gold shimmer for the arrow/gem -->
+    <linearGradient id="goldShimmer" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#ffe066"/>
+      <stop offset="45%"  stop-color="#f0b90b"/>
+      <stop offset="100%" stop-color="#c07f00"/>
+    </linearGradient>
+
+    <!-- Teal accent for left gem facet -->
+    <linearGradient id="tealFacet" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#00e5cc"/>
+      <stop offset="100%" stop-color="#00b89c"/>
+    </linearGradient>
+
+    <!-- Right gold facet -->
+    <linearGradient id="rightFacet" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#f0b90b"/>
+      <stop offset="100%" stop-color="#8a6400"/>
+    </linearGradient>
+
+    <!-- Glow filter for the gem/arrow -->
+    <filter id="goldGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0.7 0 0 0
+                0 0.7 0 0 0
+                0 0   0 0 0
+                0 0   0 1 0" result="goldBlur"/>
+      <feMerge>
+        <feMergeNode in="goldBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Soft ambient glow behind the icon -->
+    <filter id="ambientGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="30" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Inner border gradient -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#f0b90b" stop-opacity="0.6"/>
+      <stop offset="50%"  stop-color="#00e5cc" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#f0b90b" stop-opacity="0.1"/>
+    </linearGradient>
+
+    <!-- Chart line gradient -->
+    <linearGradient id="chartLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#00e5cc" stop-opacity="0.2"/>
+      <stop offset="60%"  stop-color="#00e5cc" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#f0b90b" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <clipPath id="squircleClip">
+      <rect x="0" y="0" width="512" height="512" rx="115"/>
+    </clipPath>
+  </defs>
+
+  <!-- ── APP SHELL ── -->
+  <rect x="0" y="0" width="512" height="512" rx="115" fill="url(#shellGrad)"/>
+
+  <!-- Subtle radial ambient warm light at center -->
+  <ellipse cx="256" cy="248" rx="210" ry="200" fill="#f0b90b" opacity="0.04"/>
+
+  <!-- Inner glowing border ring -->
+  <rect x="8" y="8" width="496" height="496" rx="110"
+        fill="none" stroke="url(#borderGrad)" stroke-width="2.5"/>
+
+  <!-- ── BACKGROUND: Subtle candlestick chart (very faint, for context) ── -->
+  <!-- Grid lines -->
+  <line x1="60" y1="370" x2="452" y2="370" stroke="#1a2030" stroke-width="1.5"/>
+  <line x1="60" y1="300" x2="452" y2="300" stroke="#1a2030" stroke-width="1.5"/>
+  <line x1="60" y1="230" x2="452" y2="230" stroke="#1a2030" stroke-width="1.5"/>
+
+  <!-- Mini candles (background, faint) -->
+  <!-- candle 1 red -->
+  <rect x="72"  y="320" width="28" height="44" rx="3" fill="#f6465d" opacity="0.18"/>
+  <!-- candle 2 green -->
+  <rect x="116" y="285" width="28" height="55" rx="3" fill="#0ecb81" opacity="0.18"/>
+  <!-- candle 3 red -->
+  <rect x="160" y="302" width="28" height="38" rx="3" fill="#f6465d" opacity="0.18"/>
+  <!-- candle 4 green -->
+  <rect x="204" y="262" width="28" height="65" rx="3" fill="#0ecb81" opacity="0.18"/>
+  <!-- candle 5 green -->
+  <rect x="248" y="240" width="28" height="72" rx="3" fill="#0ecb81" opacity="0.18"/>
+  <!-- candle 6 red -->
+  <rect x="292" y="255" width="28" height="50" rx="3" fill="#f6465d" opacity="0.18"/>
+  <!-- candle 7 green big -->
+  <rect x="336" y="218" width="28" height="90" rx="3" fill="#0ecb81" opacity="0.18"/>
+  <!-- candle 8 green breakout -->
+  <rect x="380" y="190" width="28" height="100" rx="3" fill="#0ecb81" opacity="0.18"/>
+
+  <!-- Rising trendline in background -->
+  <path d="M 72 345 C 120 330, 200 295, 280 255 S 380 205, 410 182"
+        fill="none" stroke="url(#chartLine)" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- ── MAIN ICON: Geometric Gem + Upward Arrow (the "J" mark) ── -->
+  <!-- Glow halo behind gem -->
+  <ellipse cx="256" cy="225" rx="118" ry="105" fill="#f0b90b" opacity="0.07" filter="url(#ambientGlow)"/>
+
+  <!-- GEM SHAPE: 6-point crystal made of facets -->
+  <!-- Top apex -->
+  <!-- Left upper facet (teal) -->
+  <polygon points="256,88  176,192  256,192"
+           fill="url(#tealFacet)" opacity="0.95"/>
+  <!-- Right upper facet (dark gold) -->
+  <polygon points="256,88  256,192  336,192"
+           fill="url(#goldShimmer)" opacity="0.90"/>
+  <!-- Center highlight sliver -->
+  <polygon points="256,88  248,192  264,192"
+           fill="#fffbe0" opacity="0.30"/>
+
+  <!-- Lower left facet -->
+  <polygon points="176,192  256,192  216,305"
+           fill="#00b89c" opacity="0.80"/>
+  <!-- Lower right facet -->
+  <polygon points="256,192  336,192  296,305"
+           fill="#c07f00" opacity="0.80"/>
+  <!-- Center lower facet (bright gold) -->
+  <polygon points="216,305  256,192  296,305  256,338"
+           fill="url(#goldShimmer)" opacity="0.95"/>
+
+  <!-- Gem outline / edge lines -->
+  <polyline points="256,88 176,192 216,305 256,338 296,305 336,192 256,88"
+            fill="none" stroke="#ffe066" stroke-width="2.5"
+            stroke-linejoin="round" opacity="0.6"/>
+  <line x1="176" y1="192" x2="336" y2="192"
+        stroke="#ffe066" stroke-width="1.5" opacity="0.4"/>
+  <line x1="216" y1="305" x2="296" y2="305"
+        stroke="#ffe066" stroke-width="1.5" opacity="0.3"/>
+
+  <!-- Gold glow on gem (layered glow pass) -->
+  <polygon points="256,88  176,192  216,305  256,338  296,305  336,192"
+           fill="none" stroke="#f0b90b" stroke-width="6"
+           stroke-linejoin="round" filter="url(#goldGlow)" opacity="0.5"/>
+
+  <!-- ── UPWARD ARROW through gem (profit spike) ── -->
+  <line x1="256" y1="355" x2="256" y2="134"
+        stroke="url(#goldShimmer)" stroke-width="8"
+        stroke-linecap="round" opacity="0.0"/>
+  <!-- Arrow head pointing up - overlaid on gem peak -->
+  <polygon points="256,62  234,104  278,104"
+           fill="url(#goldShimmer)" filter="url(#goldGlow)"/>
+  <polygon points="256,62  234,104  278,104"
+           fill="url(#goldShimmer)"/>
+
+  <!-- ── BOTTOM LABEL: "MJ" monogram ── -->
+  <!-- Pill background -->
+  <rect x="178" y="368" width="156" height="44" rx="22"
+        fill="#0d1117" stroke="#f0b90b" stroke-width="1.5" opacity="0.95"/>
+  <!-- "MJ" text monogram -->
+  <text x="256" y="399"
+        fill="#f0b90b"
+        font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
+        font-weight="800"
+        font-size="22"
+        letter-spacing="5"
+        text-anchor="middle">MJ·PRO</text>
+
+  <!-- ── CORNER ACCENT DOTS ── -->
+  <circle cx="80"  cy="80"  r="3.5" fill="#00e5cc" opacity="0.5"/>
+  <circle cx="432" cy="80"  r="3.5" fill="#f0b90b"  opacity="0.5"/>
+  <circle cx="80"  cy="432" r="3.5" fill="#f0b90b"  opacity="0.3"/>
+  <circle cx="432" cy="432" r="3.5" fill="#00e5cc" opacity="0.3"/>
+</svg>

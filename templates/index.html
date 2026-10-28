@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Journal Pro | Quantitative Portfolio Dashboard</title>
+    <!-- App Favicon & PWA Metadata -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+    <link rel="apple-touch-icon" href="/static/icon.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TradingJournal">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brandDark: '#0d1117',
+                        cardDark: '#161b22',
+                        cardHover: '#1c222b',
+                        borderDark: '#30363d',
+                        accentBlue: '#2962ff',
+                        accentGreen: '#0ecb81',
+                        accentRed: '#f6465d',
+                        accentGold: '#f0b90b'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- ApexCharts for Financial Visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .apexcharts-tooltip { background: #161b22 !important; border-color: #30363d !important; color: #e6edf3 !important; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0d1117; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col custom-scrollbar">
+
+    <!-- Launch Splash Screen Animation -->
+    <div id="splashScreen" class="fixed inset-0 z-50 bg-[#0d1117] flex flex-col items-center justify-center transition-all duration-700 ease-out">
+        <div class="relative flex flex-col items-center max-w-sm w-full px-6 text-center">
+            <!-- Pulsing App Icon -->
+            <div class="relative mb-6">
+                <div class="absolute -inset-4 rounded-3xl bg-gradient-to-r from-blue-600 to-cyan-400 opacity-30 blur-xl animate-pulse"></div>
+                <img src="/static/icon.svg" alt="App Icon" class="relative w-24 h-24 rounded-2xl shadow-2xl border border-gray-700/60 transform hover:scale-105 transition duration-500">
+            </div>
+
+            <!-- Title with gradient shimmer -->
+            <h1 class="text-2xl font-black tracking-tight text-white flex items-center justify-center gap-2 mb-1">
+                TRADING JOURNAL <span class="bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-xs font-black px-2 py-0.5 rounded shadow">PRO</span>
+            </h1>
+            <p class="text-xs text-gray-400 tracking-wider uppercase mb-8 font-medium">Quantitative Intelligence Terminal</p>
+
+            <!-- Loading Progress Bar -->
+            <div class="w-full bg-gray-800/80 rounded-full h-1.5 p-0.5 border border-gray-700/50 mb-3 overflow-hidden shadow-inner">
+                <div id="splashProgress" class="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400 rounded-full transition-all duration-500 w-12 shadow-lg shadow-cyan-500/50"></div>
+            </div>
+
+            <!-- Dynamic Boot Status Text -->
+            <div class="flex items-center gap-2 text-xs text-gray-400 font-mono">
+                <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                <span id="splashStatus">Initializing quantitative core...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Header -->
+    <header class="bg-cardDark border-b border-borderDark sticky top-0 z-40 px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <img src="/static/icon.svg" alt="Logo" class="w-9 h-9 rounded-lg shadow-md shadow-accentBlue/20 border border-gray-700/50">
+            <div>
+                <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                    TRADING JOURNAL <span class="bg-accentGold text-black text-xs font-black px-1.5 py-0.5 rounded">PRO</span>
+                </h1>
+                <p class="text-xs text-gray-400">Quantitative Risk & Multi-Asset Intelligence</p>
+            </div>
+        </div>
+
+        <!-- MT5 Sync & Header Actions -->
+        <div class="flex items-center gap-3 flex-wrap">
+            <!-- MT5 Connection Status Badge -->
+            <div id="mt5StatusPill" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-gray-800 border border-borderDark text-gray-400">
+                <span class="w-2 h-2 rounded-full bg-gray-500 animate-pulse"></span>
+                <span>Checking MT5...</span>
+            </div>
+
+            <!-- MT5 Sync Button with Range Selector -->
+            <div class="flex items-center bg-gray-800 rounded-lg p-0.5 border border-borderDark">
+                <select id="mt5Range" class="bg-transparent text-xs text-gray-300 py-1.5 px-2 outline-none cursor-pointer">
+                    <option value="7">Last 7 Days</option>
+                    <option value="30" selected>Last 30 Days</option>
+                    <option value="90">Last 90 Days</option>
+                    <option value="365">All Year</option>
+                </select>
+                <button onclick="triggerMT5Sync()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-arrows-rotate"></i> Sync MT5
+                </button>
+            </div>
+
+            <!-- Modal Trigger: + Add Trade -->
+            <button onclick="openModal('addTradeModal')" class="bg-accentGreen hover:bg-emerald-400 text-gray-900 font-bold text-xs px-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-md shadow-accentGreen/10 transition">
+                <i class="fa-solid fa-plus"></i> New Trade
+            </button>
+
+            <!-- Pre/Post Market Reflection -->
+            <button onclick="openModal('dailyLogModal')" class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-borderDark text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-book-journal-whills"></i> Daily Prep
+            </button>
+
+            <!-- Position Calculator -->
+            <button onclick="openModal('calcModal')" class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-borderDark text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-calculator"></i> Risk Calc
+            </button>
+
+            <!-- Export CSV -->
+            <a href="/api/export-csv" class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-borderDark text-xs px-3 py-2 rounded-lg flex items-center gap-1 transition" title="Export CSV">
+                <i class="fa-solid fa-file-export"></i>
+            </a>
+
+            <!-- Backup DB Button -->
+            <button onclick="triggerBackup()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-borderDark text-xs px-3 py-2 rounded-lg flex items-center gap-1 transition" title="Backup Database Now">
+                <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 p-6 space-y-6 max-w-[1600px] w-full mx-auto">
+
+        <!-- Notification Toast -->
+        <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-gray-900 border border-borderDark text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3">
+            <span id="toastIcon"></span>
+            <span id="toastMsg" class="text-sm font-medium"></span>
+        </div>
+
+        <!-- KPI SUMMARY CARDS -->
+        <section class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4" id="kpiRow">
+            <div class="bg-cardDark border border-borderDark rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Net Realized P&L</span>
+                <span id="kpiNetPnl" class="text-2xl font-black mt-2 text-white">--</span>
+                <span id="kpiGrossSub" class="text-xs text-gray-500 mt-1">Gross: --</span>
+            </div>
+
+            <div class="bg-cardDark border border-borderDark rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Win Rate</span>
+                <span id="kpiWinRate" class="text-2xl font-black mt-2 text-white">--%</span>
+                <span id="kpiWinLossCount" class="text-xs text-gray-500 mt-1">-- Wins / -- Losses</span>
+            </div>
+
+            <div class="bg-cardDark border border-borderDark rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Profit Factor</span>
+                <span id="kpiProfitFactor" class="text-2xl font-black mt-2 text-accentGold">--</span>
+                <span id="kpiWinLossRatio" class="text-xs text-gray-500 mt-1">Win/Loss: --</span>
+            </div>
+
+            <div class="bg-cardDark border border-borderDark rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Expectancy</span>
+                <span id="kpiExpectancy" class="text-2xl font-black mt-2 text-accentBlue">--</span>
+                <span id="kpiAvgR" class="text-xs text-gray-500 mt-1">Avg R: --</span>
+            </div>
+
+            <div class="bg-cardDark border border-borderDark rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Max Drawdown</span>
+                <span id="kpiMaxDD" class="text-2xl font-black mt-2 text-accentRed">--</span>
+                <span id="kpiMaxDDPct" class="text-xs text-gray-500 mt-1">--% decline</span>
+            </div>
+
+            <div class="bg-cardDark border border-borderDark rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Sharpe / Sortino</span>
+                <span id="kpiSharpe" class="text-2xl font-black mt-2 text-white">--</span>
+                <span id="kpiSortino" class="text-xs text-gray-500 mt-1">Sortino: --</span>
+            </div>
+        </section>
+
+        <!-- CHARTS SECTION: Equity Curve & Pie / Donut Charts -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 1. Portfolio Equity Curve (2 Cols) -->
+            <div class="lg:col-span-2 bg-cardDark border border-borderDark rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-area text-accentBlue"></i> Portfolio Equity Growth
+                        </h2>
+                        <p class="text-xs text-gray-400">Cumulative account equity timeline</p>
+                    </div>
+                    <span id="equityCurrentBadge" class="text-xs font-semibold px-2.5 py-1 bg-blue-500/10 text-accentBlue rounded-full border border-blue-500/20">--</span>
+                </div>
+                <div id="equityChart" class="w-full h-[320px]"></div>
+            </div>
+
+            <!-- 2. Win / Loss & Directional Donut Charts (1 Col) -->
+            <div class="bg-cardDark border border-borderDark rounded-xl p-5 shadow-sm flex flex-col justify-between">
+                <div>
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2 mb-1">
+                        <i class="fa-solid fa-chart-pie text-accentGold"></i> Win / Loss Distribution
+                    </h2>
+                    <p class="text-xs text-gray-400 mb-4">Outcome breakdown & win probability</p>
+                    <div id="winLossChart" class="w-full h-[240px]"></div>
+                </div>
+
+                <div class="pt-4 border-t border-borderDark grid grid-cols-2 gap-2 text-center">
+                    <div class="bg-gray-800/60 p-2.5 rounded-lg border border-borderDark">
+                        <span class="text-[11px] text-gray-400 block uppercase">Long P&L</span>
+                        <span id="longPnlLabel" class="text-sm font-bold text-white">--</span>
+                    </div>
+                    <div class="bg-gray-800/60 p-2.5 rounded-lg border border-borderDark">
+                        <span class="text-[11px] text-gray-400 block uppercase">Short P&L</span>
+                        <span id="shortPnlLabel" class="text-sm font-bold text-white">--</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECONDARY CHARTS: Strategy Attribution & Daily P&L Bars -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 3. Setup / Strategy Profitability Bar Chart -->
+            <div class="bg-cardDark border border-borderDark rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                            <i class="fa-solid fa-cubes-stacked text-purple-400"></i> Strategy & Setup Attribution
+                        </h2>
+                        <p class="text-xs text-gray-400">Net P&L generated per setup tag</p>
+                    </div>
+                </div>
+                <div id="setupChart" class="w-full h-[260px]"></div>
+            </div>
+
+            <!-- 4. Daily P&L Histogram (Green / Red Bars) -->
+            <div class="bg-cardDark border border-borderDark rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                            <i class="fa-solid fa-calendar-days text-emerald-400"></i> Daily Performance Histogram
+                        </h2>
+                        <p class="text-xs text-gray-400">Profit & loss distribution by trading day</p>
+                    </div>
+                </div>
+                <div id="dailyPnlChart" class="w-full h-[260px]"></div>
+            </div>
+        </section>
+
+        <!-- TRADES RECORD TABLE -->
+        <section class="bg-cardDark border border-borderDark rounded-xl shadow-sm overflow-hidden">
+            <!-- Table Header Controls -->
+            <div class="p-4 border-b border-borderDark flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-white">Trade Log</h2>
+                    <!-- Status Filter Tabs -->
+                    <div class="flex items-center bg-gray-800 rounded-lg p-0.5 border border-borderDark text-xs">
+                        <button onclick="setFilter('ALL')" id="tabALL" class="filter-tab px-3 py-1 rounded-md font-semibold text-white bg-accentBlue">ALL</button>
+                        <button onclick="setFilter('OPEN')" id="tabOPEN" class="filter-tab px-3 py-1 rounded-md font-semibold text-gray-400 hover:text-white">OPEN</button>
+                        <button onclick="setFilter('CLOSED')" id="tabCLOSED" class="filter-tab px-3 py-1 rounded-md font-semibold text-gray-400 hover:text-white">CLOSED</button>
+                    </div>
+                </div>
+
+                <!-- Search Input -->
+                <div class="relative w-72">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-gray-500"></i>
+                    <input type="text" id="searchInput" oninput="renderTradesTable()" placeholder="Search symbol, setup, ID..." class="w-full bg-gray-800 border border-borderDark rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-gray-500 outline-none focus:border-accentBlue">
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-gray-800/50 text-gray-400 uppercase font-semibold border-b border-borderDark">
+                            <th class="py-3 px-4">Ticket / ID</th>
+                            <th class="py-3 px-4">Symbol</th>
+                            <th class="py-3 px-4">Type</th>
+                            <th class="py-3 px-4">Asset</th>
+                            <th class="py-3 px-4">Lots / Qty</th>
+                            <th class="py-3 px-4">Entry</th>
+                            <th class="py-3 px-4">Exit</th>
+                            <th class="py-3 px-4">Stop / Target</th>
+                            <th class="py-3 px-4">Net P&L</th>
+                            <th class="py-3 px-4">R-Multiple</th>
+                            <th class="py-3 px-4">Status</th>
+                            <th class="py-3 px-4">Setup</th>
+                            <th class="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesTableBody" class="divide-y divide-borderDark text-gray-200">
+                        <tr><td colspan="13" class="text-center py-8 text-gray-500">Loading trades...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ============================================================ -->
+    <!-- MODALS -->
+    <!-- ============================================================ -->
+
+    <!-- 1. Add Trade Modal -->
+    <div id="addTradeModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardDark border border-borderDark rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex items-center justify-between border-b border-borderDark pb-3">
+                <h3 class="font-bold text-base text-white flex items-center gap-2">
+                    <i class="fa-solid fa-plus text-accentGreen"></i> Log New Trade Position
+                </h3>
+                <button onclick="closeModal('addTradeModal')" class="text-gray-400 hover:text-white text-lg">&times;</button>
+            </div>
+
+            <form id="addTradeForm" onsubmit="submitAddTrade(event)" class="space-y-4 text-xs">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Symbol</label>
+                        <input type="text" id="addSymbol" required placeholder="EURUSD, NVDA, BTCUSDT" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue uppercase">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Trade Direction</label>
+                        <select id="addType" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                            <option value="BUY">BUY (Long)</option>
+                            <option value="SHORT">SHORT (Sell)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Asset Class</label>
+                        <select id="addAsset" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                            <option value="FOREX">FOREX</option>
+                            <option value="COMMODITIES">COMMODITIES / METALS</option>
+                            <option value="INDICES">INDICES</option>
+                            <option value="STOCKS">STOCKS</option>
+                            <option value="CRYPTO">CRYPTO</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Volume / Quantity</label>
+                        <input type="number" step="any" id="addQuantity" required placeholder="0.10" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Entry Price</label>
+                        <input type="number" step="any" id="addEntryPrice" required placeholder="1.0850" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Commission / Fee ($)</label>
+                        <input type="number" step="any" id="addCommission" value="0.0" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Stop Loss Price</label>
+                        <input type="number" step="any" id="addStopLoss" placeholder="Optional stop price" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Take Profit Target</label>
+                        <input type="number" step="any" id="addTakeProfit" placeholder="Optional target price" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Strategy / Setup</label>
+                        <input type="text" id="addSetup" placeholder="Breakout, S/R Bounce..." class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Discipline Rating (1-5)</label>
+                        <select id="addDiscipline" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                            <option value="5">5 - Followed Rules 100%</option>
+                            <option value="4">4 - Minor Hesitation</option>
+                            <option value="3">3 - Slight FOMO / Chase</option>
+                            <option value="2">2 - Moved Stop / Impatient</option>
+                            <option value="1">1 - Revenge Trade / No Plan</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Session</label>
+                        <select id="addSession" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                            <option value="London">London Session</option>
+                            <option value="NY" selected>New York Session</option>
+                            <option value="Asian">Asian Session</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Trade Notes & Thesis</label>
+                    <textarea id="addNotes" rows="2" placeholder="Entry trigger, confluences, market context..." class="w-full bg-gray-800 border border-borderDark rounded-lg p-3 text-white outline-none focus:border-accentBlue"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-3 border-t border-borderDark">
+                    <button type="button" onclick="closeModal('addTradeModal')" class="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 font-semibold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-accentGreen hover:bg-emerald-400 text-gray-900 font-bold rounded-lg shadow-md transition">Save Position</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. Close Trade Modal -->
+    <div id="closeTradeModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardDark border border-borderDark rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-borderDark pb-3">
+                <h3 class="font-bold text-base text-white">Close Open Trade Position</h3>
+                <button onclick="closeModal('closeTradeModal')" class="text-gray-400 hover:text-white text-lg">&times;</button>
+            </div>
+            <form id="closeTradeForm" onsubmit="submitCloseTrade(event)" class="space-y-4 text-xs">
+                <input type="hidden" id="closeTradeId">
+                <div class="p-3 bg-gray-800/60 rounded-lg border border-borderDark" id="closeTradeSummary"></div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Exit Execution Price</label>
+                    <input type="number" step="any" id="closeExitPrice" required placeholder="Enter exit price" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Exit Commission / Swap ($)</label>
+                    <input type="number" step="any" id="closeCommission" value="0.0" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none focus:border-accentBlue">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Closing Notes / Review</label>
+                    <textarea id="closeNotes" rows="2" placeholder="Exit reason, plan adherence..." class="w-full bg-gray-800 border border-borderDark rounded-lg p-3 text-white outline-none focus:border-accentBlue"></textarea>
+                </div>
+                <div class="flex justify-end gap-3 pt-3 border-t border-borderDark">
+                    <button type="button" onclick="closeModal('closeTradeModal')" class="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 font-semibold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-accentBlue hover:bg-blue-600 text-white font-bold rounded-lg shadow-md transition">Confirm Close</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. Trade Detail & Screenshot Modal -->
+    <div id="detailModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardDark border border-borderDark rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex items-center justify-between border-b border-borderDark pb-3">
+                <h3 class="font-bold text-base text-white" id="detailTitle">Trade Details</h3>
+                <button onclick="closeModal('detailModal')" class="text-gray-400 hover:text-white text-lg">&times;</button>
+            </div>
+            <div id="detailContent" class="space-y-4 text-xs"></div>
+            <!-- Screenshot Upload & Preview Area -->
+            <div class="border-t border-borderDark pt-4 space-y-3">
+                <h4 class="font-semibold text-gray-300">Chart Setup Screenshot</h4>
+                <div id="detailScreenshotArea"></div>
+                <form id="screenshotUploadForm" class="flex items-center gap-2 pt-2">
+                    <input type="file" id="screenshotFileInput" accept="image/*" class="text-xs text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-800 file:text-gray-200 hover:file:bg-gray-700 cursor-pointer">
+                    <button type="button" onclick="uploadScreenshot()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-md font-semibold transition">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Position Sizing Calculator Modal -->
+    <div id="calcModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardDark border border-borderDark rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-borderDark pb-3">
+                <h3 class="font-bold text-base text-white flex items-center gap-2">
+                    <i class="fa-solid fa-calculator text-accentGold"></i> Position Sizing Calculator
+                </h3>
+                <button onclick="closeModal('calcModal')" class="text-gray-400 hover:text-white text-lg">&times;</button>
+            </div>
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Account Capital ($)</label>
+                    <input type="number" id="calcAccount" value="10000" oninput="calculateRisk()" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Risk Percentage (%)</label>
+                    <input type="number" step="0.1" id="calcRiskPct" value="1.0" oninput="calculateRisk()" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Entry Price ($)</label>
+                        <input type="number" step="any" id="calcEntry" value="150.0" oninput="calculateRisk()" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 font-medium">Stop Loss ($)</label>
+                        <input type="number" step="any" id="calcStop" value="145.0" oninput="calculateRisk()" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                    </div>
+                </div>
+
+                <div class="bg-gray-800/80 p-4 rounded-xl border border-borderDark space-y-2 mt-4 text-xs" id="calcResults">
+                    <div class="flex justify-between"><span class="text-gray-400">Dollar Risk (R):</span><span class="font-bold text-accentRed" id="resRiskDollar">$100.00</span></div>
+                    <div class="flex justify-between"><span class="text-gray-400">Recommended Size:</span><span class="font-bold text-accentGreen" id="resShares">20.00 units</span></div>
+                    <div class="flex justify-between"><span class="text-gray-400">Position Capital:</span><span class="font-bold text-white" id="resPosValue">$3,000.00</span></div>
+                    <div class="flex justify-between"><span class="text-gray-400">Account Leverage:</span><span class="font-bold text-accentGold" id="resLeverage">0.30x</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Daily Prep & Reflection Modal -->
+    <div id="dailyLogModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-cardDark border border-borderDark rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-borderDark pb-3">
+                <h3 class="font-bold text-base text-white flex items-center gap-2">
+                    <i class="fa-solid fa-book-journal-whills text-purple-400"></i> Daily Trading Prep & Review
+                </h3>
+                <button onclick="closeModal('dailyLogModal')" class="text-gray-400 hover:text-white text-lg">&times;</button>
+            </div>
+            <form onsubmit="submitDailyLog(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Date</label>
+                    <input type="date" id="dailyDate" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Market Macro Bias</label>
+                    <select id="dailyBias" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                        <option value="Bullish">Bullish (Trend Following)</option>
+                        <option value="Bearish">Bearish (Short Bias)</option>
+                        <option value="Neutral / Range">Neutral / Range-Bound</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Key News Events (FOMC, CPI, NFP...)</label>
+                    <input type="text" id="dailyNews" placeholder="e.g. CPI 8:30am NY, FOMC Minutes 2pm" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Execution Mindset & Energy (1-5)</label>
+                    <select id="dailyMindset" class="w-full bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-white outline-none">
+                        <option value="5">5 - Calm, Focused, Patient</option>
+                        <option value="4">4 - Good State</option>
+                        <option value="3">3 - Distracted / Tired</option>
+                        <option value="2">2 - Anxious / Frustrated</option>
+                        <option value="1">1 - High Risk of Overtrading</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 font-medium">Post-Session Reflection</label>
+                    <textarea id="dailyPostNotes" rows="3" placeholder="What went well today? What mistakes did I avoid?" class="w-full bg-gray-800 border border-borderDark rounded-lg p-3 text-white outline-none"></textarea>
+                </div>
+                <div class="flex justify-end gap-3 pt-3 border-t border-borderDark">
+                    <button type="button" onclick="closeModal('dailyLogModal')" class="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 font-semibold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg shadow-md transition">Save Daily Log</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- JAVASCRIPT LOGIC & APEXCHARTS ENGINE -->
+    <!-- ============================================================ -->
+    <script>
+        let allTrades = [];
+        let currentFilter = 'ALL';
+        let equityChart = null;
+        let winLossChart = null;
+        let setupChart = null;
+        let dailyPnlChart = null;
+        let activeTradeForDetail = null;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initCharts();
+            checkMT5Status();
+            loadStats();
+            loadTrades();
+            calculateRisk();
+            document.getElementById("dailyDate").value = new Date().toISOString().split('T')[0];
+            runSplashSequence();
+        });
+
+        // Launch Animation Sequence
+        function runSplashSequence() {
+            const bar = document.getElementById("splashProgress");
+            const txt = document.getElementById("splashStatus");
+            const splash = document.getElementById("splashScreen");
+            if (!splash) return;
+
+            bar.style.width = "25%";
+
+            setTimeout(() => {
+                if (bar) bar.style.width = "60%";
+                if (txt) txt.innerText = "Connecting to MetaTrader 5...";
+            }, 350);
+
+            setTimeout(() => {
+                if (bar) bar.style.width = "90%";
+                if (txt) txt.innerText = "Loading portfolio analytics...";
+            }, 750);
+
+            setTimeout(() => {
+                if (bar) bar.style.width = "100%";
+                if (txt) txt.innerText = "Trading Terminal Ready";
+            }, 1100);
+
+            setTimeout(() => {
+                splash.classList.add("opacity-0", "pointer-events-none", "scale-105");
+                setTimeout(() => splash.remove(), 700);
+            }, 1450);
+        }
+
+        // Initialize ApexCharts with Dark Theme
+        function initCharts() {
+            // 1. Equity Curve Chart
+            const equityOptions = {
+                chart: { type: 'area', height: 320, background: 'transparent', toolbar: { show: false }, animations: { enabled: true } },
+                theme: { mode: 'dark' },
+                stroke: { curve: 'smooth', width: 2.5, colors: ['#2962ff'] },
+                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.05, stops: [0, 95, 100], colorStops: [{ offset: 0, color: '#2962ff', opacity: 0.4 }, { offset: 100, color: '#2962ff', opacity: 0.0 }] } },
+                grid: { borderColor: '#30363d', strokeDashArray: 3 },
+                dataLabels: { enabled: false },
+                xaxis: { type: 'datetime', labels: { style: { colors: '#8b949e', fontSize: '11px' } }, axisBorder: { show: false }, axisTicks: { show: false } },
+                yaxis: { labels: { formatter: val => `$${val.toLocaleString()}`, style: { colors: '#8b949e', fontSize: '11px' } } },
+                tooltip: { y: { formatter: val => `$${val.toLocaleString()}` } },
+                series: [{ name: 'Account Balance', data: [] }]
+            };
+            equityChart = new ApexCharts(document.querySelector("#equityChart"), equityOptions);
+            equityChart.render();
+
+            // 2. Win / Loss Donut Chart
+            const winLossOptions = {
+                chart: { type: 'donut', height: 240, background: 'transparent' },
+                theme: { mode: 'dark' },
+                colors: ['#0ecb81', '#f6465d', '#8b949e'],
+                labels: ['Winning Trades', 'Losing Trades', 'Breakeven'],
+                plotOptions: { pie: { donut: { size: '72%', labels: { show: true, total: { show: true, label: 'WIN RATE', formatter: w => `${w.globals.seriesPercent[0] ? w.globals.seriesPercent[0].toFixed(1) : 0}%`, color: '#fff' } } } } },
+                stroke: { width: 0 },
+                dataLabels: { enabled: false },
+                legend: { position: 'bottom', fontSize: '11px', labels: { colors: '#8b949e' } },
+                series: [0, 0, 0]
+            };
+            winLossChart = new ApexCharts(document.querySelector("#winLossChart"), winLossOptions);
+            winLossChart.render();
+
+            // 3. Strategy Attribution Horizontal Bar Chart
+            const setupOptions = {
+                chart: { type: 'bar', height: 260, background: 'transparent', toolbar: { show: false } },
+                theme: { mode: 'dark' },
+                plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%', colors: { ranges: [{ from: -1000000, to: 0, color: '#f6465d' }, { from: 0.0001, to: 1000000, color: '#0ecb81' }] } } },
+                grid: { borderColor: '#30363d', strokeDashArray: 3 },
+                dataLabels: { enabled: true, formatter: val => `$${val.toLocaleString()}`, style: { fontSize: '10px' } },
+                xaxis: { labels: { formatter: val => `$${val}`, style: { colors: '#8b949e', fontSize: '10px' } } },
+                yaxis: { labels: { style: { colors: '#e6edf3', fontSize: '11px', fontWeight: 600 } } },
+                series: [{ name: 'Net P&L', data: [] }]
+            };
+            setupChart = new ApexCharts(document.querySelector("#setupChart"), setupOptions);
+            setupChart.render();
+
+            // 4. Daily P&L Bar Chart
+            const dailyOptions = {
+                chart: { type: 'bar', height: 260, background: 'transparent', toolbar: { show: false } },
+                theme: { mode: 'dark' },
+                plotOptions: { bar: { borderRadius: 3, columnWidth: '60%', colors: { ranges: [{ from: -1000000, to: 0, color: '#f6465d' }, { from: 0.0001, to: 1000000, color: '#0ecb81' }] } } },
+                grid: { borderColor: '#30363d', strokeDashArray: 3 },
+                dataLabels: { enabled: false },
+                xaxis: { type: 'category', labels: { style: { colors: '#8b949e', fontSize: '10px' } } },
+                yaxis: { labels: { formatter: val => `$${val}`, style: { colors: '#8b949e', fontSize: '10px' } } },
+                series: [{ name: 'Daily P&L', data: [] }]
+            };
+            dailyPnlChart = new ApexCharts(document.querySelector("#dailyPnlChart"), dailyOptions);
+            dailyPnlChart.render();
+        }
+
+        // Fetch MT5 Connection Status
+        async function checkMT5Status() {
+            try {
+                const res = await fetch("/api/mt5/status");
+                const data = await res.json();
+                const pill = document.getElementById("mt5StatusPill");
+                if (data.connected) {
+                    pill.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+                    pill.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span>MT5 Live: ${data.server} (#${data.login})</span>`;
+                } else {
+                    pill.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/30";
+                    pill.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span><span>MT5 Offline (Terminal closed)</span>`;
+                }
+            } catch (e) {
+                console.error("Failed to check MT5 status", e);
+            }
+        }
+
+        // Trigger One-Click MT5 Sync
+        async function triggerMT5Sync() {
+            const days = document.getElementById("mt5Range").value;
+            showToast("Connecting to MetaTrader 5...", "info");
+            try {
+                const res = await fetch("/api/mt5/sync", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ days: parseInt(days) })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, "success");
+                    loadStats();
+                    loadTrades();
+                    checkMT5Status();
+                } else {
+                    showToast(data.message || data.error || "Sync failed", "error");
+                }
+            } catch (e) {
+                showToast(`Sync error: ${e.message}`, "error");
+            }
+        }
+
+        // Load Quantitative Stats & Update Diagrams
+        async function loadStats() {
+            try {
+                const res = await fetch("/api/stats");
+                const json = await res.json();
+                if (!json.success) return;
+                const d = json.data;
+
+                // KPI values
+                const pnlEl = document.getElementById("kpiNetPnl");
+                pnlEl.innerText = `${d.total_pnl >= 0 ? '+' : ''}$${d.total_pnl.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                pnlEl.className = `text-2xl font-black mt-2 ${d.total_pnl >= 0 ? 'text-accentGreen' : 'text-accentRed'}`;
+                document.getElementById("kpiGrossSub").innerText = `Gross: $${(d.gross_profit - d.gross_loss).toLocaleString()} | Comm: $${d.total_commissions}`;
+
+                document.getElementById("kpiWinRate").innerText = `${d.win_rate}%`;
+                document.getElementById("kpiWinLossCount").innerText = `${d.winning_trades} Wins / ${d.losing_trades} Losses`;
+
+                document.getElementById("kpiProfitFactor").innerText = d.profit_factor;
+                document.getElementById("kpiWinLossRatio").innerText = `Win/Loss: ${d.win_loss_ratio}`;
+
+                document.getElementById("kpiExpectancy").innerText = `${d.expectancy >= 0 ? '+' : ''}$${d.expectancy.toFixed(2)}`;
+                document.getElementById("kpiAvgR").innerText = `Avg R: ${d.avg_r_multiple >= 0 ? '+' : ''}${d.avg_r_multiple}R`;
+
+                document.getElementById("kpiMaxDD").innerText = `$${d.max_drawdown.toLocaleString()}`;
+                document.getElementById("kpiMaxDDPct").innerText = `${d.max_drawdown_pct}% decline`;
+
+                document.getElementById("kpiSharpe").innerText = d.sharpe_ratio;
+                document.getElementById("kpiSortino").innerText = `Sortino: ${d.sortino_ratio}`;
+
+                document.getElementById("longPnlLabel").innerText = `${d.long_pnl >= 0 ? '+' : ''}$${d.long_pnl.toLocaleString()} (${d.long_win_rate}%)`;
+                document.getElementById("shortPnlLabel").innerText = `${d.short_pnl >= 0 ? '+' : ''}$${d.short_pnl.toLocaleString()} (${d.short_win_rate}%)`;
+
+                // Update Equity Curve
+                if (d.equity_curve && d.equity_curve.length > 0) {
+                    const points = d.equity_curve.map(p => [new Date(p.time).getTime(), p.equity]);
+                    equityChart.updateSeries([{ name: 'Account Balance', data: points }]);
+                    const currBal = points[points.length - 1][1];
+                    document.getElementById("equityCurrentBadge").innerText = `Balance: $${currBal.toLocaleString()}`;
+                }
+
+                // Update Win / Loss Donut
+                winLossChart.updateSeries([d.winning_trades, d.losing_trades, d.breakeven_trades]);
+
+                // Update Setup Attribution
+                if (d.setup_breakdown && d.setup_breakdown.length > 0) {
+                    const categories = d.setup_breakdown.map(s => s.setup);
+                    const values = d.setup_breakdown.map(s => s.pnl);
+                    setupChart.updateOptions({ xaxis: { categories: categories } });
+                    setupChart.updateSeries([{ name: 'Net P&L', data: values }]);
+                }
+
+                // Update Daily P&L Histogram
+                if (d.daily_pnl && d.daily_pnl.length > 0) {
+                    const dates = d.daily_pnl.map(x => x.date);
+                    const dailyValues = d.daily_pnl.map(x => x.pnl);
+                    dailyPnlChart.updateOptions({ xaxis: { categories: dates } });
+                    dailyPnlChart.updateSeries([{ name: 'Daily P&L', data: dailyValues }]);
+                }
+
+            } catch (e) {
+                console.error("Error loading stats", e);
+            }
+        }
+
+        // Load Trades List
+        async function loadTrades() {
+            try {
+                const res = await fetch("/api/trades");
+                const json = await res.json();
+                if (json.success) {
+                    allTrades = json.data;
+                    renderTradesTable();
+                }
+            } catch (e) {
+                console.error("Error loading trades", e);
+            }
+        }
+
+        // Render Table Rows with Client-side Filter & Search
+        function renderTradesTable() {
+            const tbody = document.getElementById("tradesTableBody");
+            const query = document.getElementById("searchInput").value.trim().toUpperCase();
+
+            let filtered = allTrades.filter(t => {
+                if (currentFilter === 'OPEN' && t.status !== 'OPEN') return false;
+                if (currentFilter === 'CLOSED' && t.status !== 'CLOSED') return false;
+                if (query) {
+                    const matchSym = t.symbol.toUpperCase().includes(query);
+                    const matchId = t.id.toUpperCase().includes(query);
+                    const matchSetup = (t.setup || '').toUpperCase().includes(query);
+                    if (!matchSym && !matchId && !matchSetup) return false;
+                }
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="13" class="text-center py-8 text-gray-500">No trades matching current filter.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(t => {
+                const isLong = t.trade_type === 'BUY' || t.trade_type === 'LONG';
+                const dirBadge = isLong ? `<span class="bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/20">BUY</span>` : `<span class="bg-red-500/10 text-red-400 font-bold px-2 py-0.5 rounded border border-red-500/20">SHORT</span>`;
+                const isOpen = t.status === 'OPEN';
+                const statusBadge = isOpen ? `<span class="bg-amber-500/10 text-accentGold px-2 py-0.5 rounded border border-amber-500/20">OPEN</span>` : `<span class="bg-gray-800 text-gray-400 px-2 py-0.5 rounded">CLOSED</span>`;
+
+                const pnl = t.net_pnl !== null ? t.net_pnl : null;
+                const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}` : '--';
+                const pnlColor = pnl !== null ? (pnl > 0 ? 'text-accentGreen font-bold' : (pnl < 0 ? 'text-accentRed font-bold' : 'text-gray-400')) : 'text-gray-500';
+
+                const rStr = t.r_multiple !== null ? `${t.r_multiple >= 0 ? '+' : ''}${t.r_multiple.toFixed(2)}R` : '--';
+                const slStr = t.stop_loss ? `$${t.stop_loss.toFixed(2)}` : '--';
+                const tpStr = t.take_profit ? `$${t.take_profit.toFixed(2)}` : '--';
+
+                return `
+                <tr class="hover:bg-cardHover/60 transition group cursor-pointer" onclick="viewTradeDetail('${t.id}')">
+                    <td class="py-3 px-4 font-mono text-gray-400 font-semibold">${t.id}</td>
+                    <td class="py-3 px-4 font-bold text-accentGold">${t.symbol}</td>
+                    <td class="py-3 px-4">${dirBadge}</td>
+                    <td class="py-3 px-4 text-gray-400 text-[11px]">${t.asset_class}</td>
+                    <td class="py-3 px-4 font-mono font-medium">${t.quantity}</td>
+                    <td class="py-3 px-4 font-mono">$${t.entry_price.toFixed(2)}</td>
+                    <td class="py-3 px-4 font-mono text-gray-300">${t.exit_price ? `$${t.exit_price.toFixed(2)}` : '--'}</td>
+                    <td class="py-3 px-4 text-gray-400 text-[11px]">${slStr} / ${tpStr}</td>
+                    <td class="py-3 px-4 font-mono ${pnlColor}">${pnlStr}</td>
+                    <td class="py-3 px-4 font-mono text-gray-300 font-medium">${rStr}</td>
+                    <td class="py-3 px-4">${statusBadge}</td>
+                    <td class="py-3 px-4 text-gray-300">${t.setup || '--'}</td>
+                    <td class="py-3 px-4 text-right space-x-1" onclick="event.stopPropagation()">
+                        ${isOpen ? `<button onclick="openCloseModal('${t.id}')" class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-semibold">Close</button>` : ''}
+                        <button onclick="deleteTrade('${t.id}')" class="px-2 py-1 bg-red-950/60 hover:bg-red-900 text-accentRed rounded text-[11px]" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll(".filter-tab").forEach(tab => {
+                tab.className = "filter-tab px-3 py-1 rounded-md font-semibold text-gray-400 hover:text-white";
+            });
+            document.getElementById(`tab${filter}`).className = "filter-tab px-3 py-1 rounded-md font-semibold text-white bg-accentBlue";
+            renderTradesTable();
+        }
+
+        // Add Trade Submission
+        async function submitAddTrade(e) {
+            e.preventDefault();
+            const payload = {
+                symbol: document.getElementById("addSymbol").value.trim().toUpperCase(),
+                trade_type: document.getElementById("addType").value,
+                asset_class: document.getElementById("addAsset").value,
+                quantity: parseFloat(document.getElementById("addQuantity").value),
+                entry_price: parseFloat(document.getElementById("addEntryPrice").value),
+                stop_loss: document.getElementById("addStopLoss").value ? parseFloat(document.getElementById("addStopLoss").value) : null,
+                take_profit: document.getElementById("addTakeProfit").value ? parseFloat(document.getElementById("addTakeProfit").value) : null,
+                commission: parseFloat(document.getElementById("addCommission").value || 0),
+                setup: document.getElementById("addSetup").value.trim() || 'Discretionary',
+                discipline_rating: parseInt(document.getElementById("addDiscipline").value),
+                session: document.getElementById("addSession").value,
+                notes: document.getElementById("addNotes").value.trim()
+            };
+
+            try {
+                const res = await fetch("/api/trades", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (json.success) {
+                    showToast(`Trade ${json.data.symbol} added successfully!`, "success");
+                    closeModal("addTradeModal");
+                    document.getElementById("addTradeForm").reset();
+                    loadStats();
+                    loadTrades();
+                } else {
+                    showToast(json.error || "Failed to add trade", "error");
+                }
+            } catch (err) {
+                showToast(`Error: ${err.message}`, "error");
+            }
+        }
+
+        // Close Trade Submission
+        function openCloseModal(tradeId) {
+            const trade = allTrades.find(t => t.id === tradeId);
+            if (!trade) return;
+            document.getElementById("closeTradeId").value = trade.id;
+            document.getElementById("closeTradeSummary").innerHTML = `
+                <div class="flex justify-between font-bold text-white mb-1">
+                    <span>${trade.symbol} (${trade.trade_type})</span>
+                    <span>${trade.quantity} lots @ $${trade.entry_price.toFixed(2)}</span>
+                </div>
+                <div class="text-[11px] text-gray-400">Position ID: ${trade.id} | Session: ${trade.session}</div>
+            `;
+            openModal("closeTradeModal");
+        }
+
+        async function submitCloseTrade(e) {
+            e.preventDefault();
+            const tradeId = document.getElementById("closeTradeId").value;
+            const payload = {
+                exit_price: parseFloat(document.getElementById("closeExitPrice").value),
+                commission: parseFloat(document.getElementById("closeCommission").value || 0),
+                notes: document.getElementById("closeNotes").value.trim()
+            };
+            try {
+                const res = await fetch(`/api/trades/${tradeId}/close`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (json.success) {
+                    showToast(`Position ${json.data.symbol} closed! P&L: $${json.data.net_pnl}`, "success");
+                    closeModal("closeTradeModal");
+                    loadStats();
+                    loadTrades();
+                } else {
+                    showToast(json.error || "Failed to close trade", "error");
+                }
+            } catch (err) {
+                showToast(`Error: ${err.message}`, "error");
+            }
+        }
+
+        // Delete Trade
+        async function deleteTrade(tradeId) {
+            if (!confirm(`Delete trade ${tradeId}? This action cannot be undone.`)) return;
+            try {
+                const res = await fetch(`/api/trades/${tradeId}`, { method: "DELETE" });
+                const json = await res.json();
+                if (json.success) {
+                    showToast(`Deleted ${tradeId}`, "info");
+                    loadStats();
+                    loadTrades();
+                }
+            } catch (err) {
+                showToast(`Delete error: ${err.message}`, "error");
+            }
+        }
+
+        // View Trade Details & Screenshot
+        function viewTradeDetail(tradeId) {
+            const t = allTrades.find(x => x.id === tradeId);
+            if (!t) return;
+            activeTradeForDetail = t;
+            document.getElementById("detailTitle").innerText = `Trade #${t.id} - ${t.symbol} (${t.trade_type})`;
+            document.getElementById("detailContent").innerHTML = `
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-800/50 p-4 rounded-xl border border-borderDark">
+                    <div><span class="text-gray-400 block">Entry:</span><span class="font-bold text-white">$${t.entry_price.toFixed(2)}</span></div>
+                    <div><span class="text-gray-400 block">Exit:</span><span class="font-bold text-white">${t.exit_price ? `$${t.exit_price.toFixed(2)}` : '--'}</span></div>
+                    <div><span class="text-gray-400 block">Net P&L:</span><span class="font-bold ${t.net_pnl > 0 ? 'text-accentGreen' : (t.net_pnl < 0 ? 'text-accentRed' : 'text-gray-300')}">${t.net_pnl !== null ? `$${t.net_pnl.toFixed(2)}` : '--'}</span></div>
+                    <div><span class="text-gray-400 block">R-Outcome:</span><span class="font-bold text-accentGold">${t.r_multiple !== null ? `${t.r_multiple.toFixed(2)}R` : '--'}</span></div>
+                </div>
+                <div class="space-y-1.5 pt-2">
+                    <div><strong class="text-gray-400">Setup:</strong> <span class="text-white">${t.setup || 'Discretionary'}</span></div>
+                    <div><strong class="text-gray-400">Discipline Score:</strong> <span class="text-accentGold">${'★'.repeat(t.discipline_rating || 5)}${'☆'.repeat(5 - (t.discipline_rating || 5))}</span></div>
+                    <div><strong class="text-gray-400">Session:</strong> <span class="text-white">${t.session}</span></div>
+                    <div><strong class="text-gray-400">Notes / Thesis:</strong> <p class="text-gray-300 bg-gray-800/70 p-2.5 rounded-lg border border-borderDark mt-1">${t.notes || 'No notes entered.'}</p></div>
+                </div>
+            `;
+
+            // Screenshot area
+            const scArea = document.getElementById("detailScreenshotArea");
+            if (t.screenshot_path) {
+                scArea.innerHTML = `<img src="/screenshots/${t.screenshot_path}" alt="Trade Screenshot" class="w-full max-h-[350px] object-contain rounded-xl border border-borderDark bg-black">`;
+            } else {
+                scArea.innerHTML = `<div class="p-6 text-center border-2 border-dashed border-borderDark rounded-xl text-gray-500">No chart screenshot attached yet. Upload below.</div>`;
+            }
+
+            openModal("detailModal");
+        }
+
+        // Upload Screenshot
+        async function uploadScreenshot() {
+            if (!activeTradeForDetail) return;
+            const fileInput = document.getElementById("screenshotFileInput");
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showToast("Please choose an image file first", "error");
+                return;
+            }
+            const formData = new FormData();
+            formData.append("image", fileInput.files[0]);
+
+            try {
+                const res = await fetch(`/api/trades/${activeTradeForDetail.id}/upload-screenshot`, {
+                    method: "POST",
+                    body: formData
+                });
+                const json = await res.json();
+                if (json.success) {
+                    showToast("Screenshot uploaded successfully!", "success");
+                    activeTradeForDetail.screenshot_path = json.filename;
+                    viewTradeDetail(activeTradeForDetail.id);
+                    loadTrades();
+                } else {
+                    showToast(json.error || "Upload failed", "error");
+                }
+            } catch (err) {
+                showToast(`Upload error: ${err.message}`, "error");
+            }
+        }
+
+        // Position Sizing Calculator
+        async function calculateRisk() {
+            const acc = parseFloat(document.getElementById("calcAccount").value) || 10000;
+            const riskPct = parseFloat(document.getElementById("calcRiskPct").value) || 1.0;
+            const entry = parseFloat(document.getElementById("calcEntry").value) || 150;
+            const stop = parseFloat(document.getElementById("calcStop").value) || 145;
+
+            try {
+                const res = await fetch("/api/calc/position-size", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ account_size: acc, risk_pct: riskPct, entry_price: entry, stop_loss: stop })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    const r = json.data;
+                    document.getElementById("resRiskDollar").innerText = `$${r.dollar_risk.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                    document.getElementById("resShares").innerText = `${r.shares} units`;
+                    document.getElementById("resPosValue").innerText = `$${r.position_value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                    document.getElementById("resLeverage").innerText = `${r.leverage}x`;
+                }
+            } catch (e) {
+                console.error("Calculator error", e);
+            }
+        }
+
+        // Save Daily Prep
+        async function submitDailyLog(e) {
+            e.preventDefault();
+            const payload = {
+                date: document.getElementById("dailyDate").value,
+                market_bias: document.getElementById("dailyBias").value,
+                news_events: document.getElementById("dailyNews").value.trim(),
+                mindset_score: parseInt(document.getElementById("dailyMindset").value),
+                post_market_notes: document.getElementById("dailyPostNotes").value.trim()
+            };
+            try {
+                const res = await fetch("/api/daily-logs", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (json.success) {
+                    showToast("Daily prep & review saved!", "success");
+                    closeModal("dailyLogModal");
+                }
+            } catch (err) {
+                showToast(`Error: ${err.message}`, "error");
+            }
+        }
+
+        // Trigger Manual Backup
+        async function triggerBackup() {
+            try {
+                showToast("Creating database backup...", "info");
+                const res = await fetch("/api/backups", { method: "POST" });
+                const json = await res.json();
+                if (json.success) {
+                    showToast(json.message, "success");
+                } else {
+                    showToast("Backup failed: " + (json.error || "Unknown"), "error");
+                }
+            } catch (err) {
+                showToast("Backup error: " + err.message, "error");
+            }
+        }
+
+        // Helpers
+        function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
+        function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+        function showToast(msg, type = "info") {
+            const toast = document.getElementById("toast");
+            const icon = document.getElementById("toastIcon");
+            const text = document.getElementById("toastMsg");
+
+            text.innerText = msg;
+            if (type === "success") {
+                icon.innerHTML = `<i class="fa-solid fa-circle-check text-accentGreen text-lg"></i>`;
+            } else if (type === "error") {
+                icon.innerHTML = `<i class="fa-solid fa-circle-exclamation text-accentRed text-lg"></i>`;
+            } else {
+                icon.innerHTML = `<i class="fa-solid fa-circle-info text-accentBlue text-lg"></i>`;
+            }
+
+            toast.classList.remove("hidden");
+            setTimeout(() => { toast.classList.add("hidden"); }, 4000);
+        }
+    </script>
+</body>
+</html>
+
