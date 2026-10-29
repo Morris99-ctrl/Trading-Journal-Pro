@@ -4,7 +4,7 @@
 **Baseline branch:** `main`  
 **Audit branch:** `phase-0/baseline-audit`  
 **Audit date:** 2026-10-29  
-**Status:** Static baseline underway; safe model characterization tests and a CLI regression test added; GitHub Actions passed on Python 3.11 and 3.12. Full application/runtime validation remains pending.
+**Status:** Static baseline underway; safe model tests and a CLI regression test added. The original model-only suite passed on Python 3.11 and 3.12. The expanded suite exposed a runtime import error in the MT5 service type annotation; a postponed-annotations fix is committed and its CI validation is pending.
 
 ## Scope and limitations
 
@@ -54,7 +54,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 
 ## Safe baseline tests added
 
-Added `tests/test_models_baseline.py`, a standard-library `unittest` suite covering long/short realized P&L after costs, open-trade realized-P&L behavior, rejection of double-closing, and core serialization fields. Added `tests/test_cli_web_command.py` to verify that the CLI `web` command opens the local dashboard and invokes the launcher. These tests do not touch the journal database. The GitHub Actions workflow ran the suite successfully on Python 3.11 and 3.12. Run locally with `python -m unittest discover -s tests -v`. This is a small characterization suite, not full application validation.
+Added `tests/test_models_baseline.py`, a standard-library `unittest` suite covering long/short realized P&L after costs, open-trade realized-P&L behavior, rejection of double-closing, and core serialization fields. Added `tests/test_cli_web_command.py` to verify that the CLI `web` command opens the local dashboard and invokes the launcher. These tests do not touch the journal database. The original model-only suite passed on Python 3.11 and 3.12. Adding the CLI regression test exposed a runtime `NameError` in `mt5_service.py`: `TradeService` was imported only under `TYPE_CHECKING` but its annotation was evaluated at runtime. `from __future__ import annotations` has been added to defer evaluation; CI for the expanded suite is pending. Run locally with `python -m unittest discover -s tests -v`. This is a small characterization suite, not full application validation.
 
 ## Phase 0 execution plan
 
