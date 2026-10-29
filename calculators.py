@@ -155,35 +155,39 @@ class TradingCalculator:
         }
 
     @staticmethod
-    def calculate_sharpe_ratio(returns: List[float], risk_free_rate: float = 0.02) -> float:
-        """Calculate Sharpe ratio given a list of percentage returns"""
+    def calculate_sharpe_ratio(returns: List[float], risk_free_rate: float = 0.0) -> float:
+        """Calculate an unannualized, per-observation Sharpe ratio.
+
+        Returns must be decimal returns from a consistent observation period.
+        Trade-by-trade returns are not daily portfolio returns, so they must not
+        be annualized with an assumed 252 trades per year. The risk-free rate,
+        when supplied, must be expressed per observation rather than annually.
+        """
         if len(returns) < 2:
             return 0.0
-        mean_ret = statistics.mean(returns)
+        mean_excess_return = statistics.mean(returns) - risk_free_rate
         std_ret = statistics.stdev(returns)
         if std_ret <= 1e-9:
             return 0.0
-        # Per trade annualized proxy (approx 252 trades/year)
-        annualized_mean = mean_ret * 252
-        annualized_std = std_ret * math.sqrt(252)
-        return (annualized_mean - risk_free_rate) / annualized_std if annualized_std > 0 else 0.0
+        return mean_excess_return / std_ret
 
     @staticmethod
     def calculate_sortino_ratio(returns: List[float], target_return: float = 0.0) -> float:
-        """Calculate Sortino ratio (penalizes downside volatility only)"""
+        """Calculate an unannualized, per-observation Sortino ratio.
+
+        Returns and target_return must use the same observation frequency.
+        Downside deviation is calculated across all observations, treating
+        observations at or above the target as zero downside.
+        """
         if len(returns) < 2:
             return 0.0
-        downside_diffs = [r - target_return for r in returns if r < target_return]
-        if not downside_diffs:
-            return float('inf') if statistics.mean(returns) > 0 else 0.0
 
-        downside_variance = sum(d ** 2 for d in downside_diffs) / len(returns)
-        downside_deviation = math.sqrt(downside_variance)
+        mean_excess_return = statistics.mean(returns) - target_return
+        downside_squares = [min(0.0, r - target_return) ** 2 for r in returns]
+        downside_deviation = math.sqrt(sum(downside_squares) / len(returns))
         if downside_deviation <= 1e-9:
-            return 0.0
-
-        mean_return = statistics.mean(returns)
-        return (mean_return - target_return) / downside_deviation
+            return float('inf') if mean_excess_return > 0 else 0.0
+        return mean_excess_return / downside_deviation
 
     @staticmethod
     def analyze_trade_series(trades: List[Trade], initial_balance: float = 10000.0) -> Dict[str, Any]:
@@ -234,7 +238,7 @@ class TradingCalculator:
         # Recovery factor: Net Profit / Max Drawdown
         recovery_factor = (total_pnl / max_drawdown_dollars) if max_drawdown_dollars > 0 else float('inf')
 
-        # Percentage returns for Sharpe / Sortino
+        # Trade-level position returns: useful for per-trade diagnostics, not portfolio-period risk ratios.
         return_pcts = [t.return_pct / 100.0 for t in closed_trades if t.return_pct is not None]
         sharpe = TradingCalculator.calculate_sharpe_ratio(return_pcts) if return_pcts else 0.0
         sortino = TradingCalculator.calculate_sortino_ratio(return_pcts) if return_pcts else 0.0
