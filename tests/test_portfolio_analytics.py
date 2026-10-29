@@ -122,6 +122,13 @@ class PortfolioPerformanceTests(unittest.TestCase):
                 self.snap(self.t1, 1010, currency="KES"),
             ])
 
+    def test_cash_flow_currency_mismatch_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "cash-flow currency"):
+            calculate_portfolio_performance(
+                [self.snap(self.t0, 1000, currency="USD"), self.snap(self.t1, 1100, currency="USD")],
+                [self.flow(self.t0 + timedelta(hours=12), "deposit", 100, currency="KES")],
+            )
+
 
 class PortfolioPersistenceTests(unittest.TestCase):
     def setUp(self):
