@@ -85,6 +85,7 @@ def calculate_portfolio_performance(
             "occurred_at": _timestamp(item.get("occurred_at")),
             "amount": amount if flow_type == "deposit" else -amount,
             "type": flow_type,
+            "currency": str(item.get("currency") or ""),
         })
     normalized_flows.sort(key=lambda x: x["occurred_at"])
 
@@ -94,7 +95,7 @@ def calculate_portfolio_performance(
     snapshot_currency = next(iter(snapshot_currencies), "")
     if snapshot_currency and any(
         flow.get("currency") and flow["currency"].upper() != snapshot_currency.upper()
-        for flow in cash_flows
+        for flow in normalized_flows
     ):
         raise ValueError("cash-flow currency must match account currency")
 
