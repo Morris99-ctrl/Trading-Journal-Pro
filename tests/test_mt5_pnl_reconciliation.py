@@ -231,6 +231,20 @@ class BrokerPnLPersistenceTests(unittest.TestCase):
         self.assertIsNone(trade.planned_total_risk)
         self.assertIsNone(trade.r_multiple)
 
+    def test_broker_pnl_fields_guard_metrics_even_without_position_id(self):
+        # Broker provenance must remain authoritative even when a CSV/import path
+        # omits the optional position identifier.
+        trade = Trade(
+            id="broker-import-no-position-id", symbol="XAUUSD",
+            trade_type=TradeType.BUY, quantity=1.0, entry_price=2000.0,
+            exit_price=2010.0, stop_loss=1990.0, status=TradeStatus.CLOSED,
+            broker_gross_pnl=100.0, broker_net_pnl=96.0,
+        )
+        self.assertIsNone(trade.return_pct)
+        self.assertIsNone(trade.planned_total_risk)
+        self.assertIsNone(trade.r_multiple)
+        self.assertEqual(trade.net_pnl, 96.0)
+
     def test_realized_pnl_calculator_accepts_broker_pnl_without_exit_price(self):
         from calculators import TradingCalculator
         trade = Trade(
