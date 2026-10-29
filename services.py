@@ -140,7 +140,11 @@ class TradeService:
                 'end_date': end_date.isoformat() if end_date else None
             },
             'performance': performance,
-            'trades': self.get_all_trades(start_date=start_date, end_date=end_date)
+            'trades': self.get_all_trades(
+                start_date=start_date,
+                end_date=end_date,
+                date_basis="exit"
+            )
         }
 
     # MetaTrader 5 Sync Methods
