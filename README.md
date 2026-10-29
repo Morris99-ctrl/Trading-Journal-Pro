@@ -35,6 +35,15 @@ An institutional-grade trading journal, automated MetaTrader 5 (MT5) synchroniza
 - **Data Portability**: One-click CSV Export and Import for external backups or broker migration.
 - **Dual Interface**: Run the **Web Dashboard** (`python main.py`) or the **Terminal CLI** (`python cli.py`).
 
+
+---
+
+## Financial Metric Notes
+
+- Date-bounded realized-performance reports use **exit date**: a trade closed in the selected period is included even if it was opened earlier. Entry-date filtering remains available for trade-cohort analysis.
+- Sharpe and Sortino values currently use **per-trade position returns**, not daily portfolio returns. They are not annualized, because the journal does not establish a consistent daily portfolio-return series or a defensible number of trades per year.
+- These per-trade ratios are diagnostic only and should not be compared directly with annualized portfolio ratios from fund factsheets. A future portfolio-risk module should calculate time-weighted daily equity returns before presenting annualized Sharpe/Sortino metrics.
+
 ---
 
 ## Getting Started
