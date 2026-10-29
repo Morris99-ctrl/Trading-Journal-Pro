@@ -49,7 +49,13 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
-This automatically starts the local server and opens your browser at **`http://127.0.0.1:5000`**.
+This starts the local server and opens your browser at **`http://127.0.0.1:5000`**. A new journal starts empty so fictional trades are never mixed into your records.
+
+To explicitly load sample trades for a demo, use:
+```bash
+python main.py --demo
+```
+The demo option only loads samples when the journal is empty. It will refuse to add them to a journal that already contains trades.
 
 ### 3. MetaTrader 5 Sync
 1. Ensure your MetaTrader 5 terminal is running on your computer.
@@ -62,4 +68,4 @@ This automatically starts the local server and opens your browser at **`http://1
 ```bash
 python cli.py
 ```
-Type `sync` to pull MT5 deals from the command line, `trades` to list positions, `stats` for quantitative ratios, or `web` to launch the browser UI.
+Type `sync` to pull MT5 deals from the command line, `trades` to list positions, `stats` for quantitative ratios, or `web` to launch the browser UI. Use `python cli.py --demo` to load sample trades for a demo; samples are only added to an empty journal. The CLI's `sample` command follows the same safety rule.
