@@ -58,6 +58,8 @@ class Trade:
     session: str = "NY"  # "London", "NY", "Asian", "Overlap"
     position_id: Optional[str] = None  # MT5 Ticket / Broker ID
     notes: str = ""
+    broker_gross_pnl: Optional[float] = None
+    broker_net_pnl: Optional[float] = None
 
     def __post_init__(self):
         if self.entry_time is None:
@@ -99,16 +101,23 @@ class Trade:
     @property
     def gross_pnl(self) -> Optional[float]:
         """Realized gross P&L if closed, else None"""
-        if self.status != TradeStatus.CLOSED or self.exit_price is None:
+        if self.status != TradeStatus.CLOSED:
+            return None
+        if self.broker_gross_pnl is not None:
+            return self.broker_gross_pnl
+        if self.exit_price is None:
             return None
         if self.is_long:
             return (self.exit_price - self.entry_price) * self.quantity
-        else:
-            return (self.entry_price - self.exit_price) * self.quantity
+        return (self.entry_price - self.exit_price) * self.quantity
 
     @property
     def net_pnl(self) -> Optional[float]:
-        """Realized net P&L after commission and swap fees"""
+        """Realized net P&L; broker-reported value takes precedence when available."""
+        if self.status != TradeStatus.CLOSED:
+            return None
+        if self.broker_net_pnl is not None:
+            return self.broker_net_pnl
         gross = self.gross_pnl
         if gross is None:
             return None
@@ -222,6 +231,8 @@ class Trade:
             "session": self.session,
             "position_id": self.position_id,
             "notes": self.notes,
+            "broker_gross_pnl": self.broker_gross_pnl,
+            "broker_net_pnl": self.broker_net_pnl,
             "net_pnl": round(self.net_pnl, 2) if self.net_pnl is not None else None,
             "gross_pnl": round(self.gross_pnl, 2) if self.gross_pnl is not None else None,
             "return_pct": round(self.return_pct, 2) if self.return_pct is not None else None,
