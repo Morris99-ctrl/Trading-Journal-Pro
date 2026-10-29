@@ -88,6 +88,16 @@ def calculate_portfolio_performance(
         })
     normalized_flows.sort(key=lambda x: x["occurred_at"])
 
+    snapshot_currencies = {item["currency"] for item in normalized_snapshots if item["currency"]}
+    if len(snapshot_currencies) > 1:
+        raise ValueError("account currency must remain consistent within a series")
+    snapshot_currency = next(iter(snapshot_currencies), "")
+    if snapshot_currency and any(
+        flow.get("currency") and flow["currency"].upper() != snapshot_currency.upper()
+        for flow in cash_flows
+    ):
+        raise ValueError("cash-flow currency must match account currency")
+
     if len(normalized_snapshots) < 2:
         return {
             "status": "insufficient_data",
@@ -175,6 +185,12 @@ def calculate_portfolio_performance(
         })
 
     valid_periods = [p for p in periods if p["return_pct"] is not None]
+    covered_start = normalized_snapshots[0]["captured_at"]
+    covered_end = normalized_snapshots[-1]["captured_at"]
+    covered_flows = [
+        flow for flow in normalized_flows
+        if covered_start < flow["occurred_at"] <= covered_end
+    ]
     total_return_pct = (equity_index - 1.0) * 100.0
     cadence_consistent = False
     if len(durations_days) >= 2 and all(d > 0 for d in durations_days):
@@ -214,6 +230,6 @@ def calculate_portfolio_performance(
             else ("inf" if sortino_result is not None else None)
         ),
         "risk_metrics_status": risk_status,
-        "cash_flow_count": len(normalized_flows),
-        "external_net_flow_total": round(sum(flow["amount"] for flow in normalized_flows), 8),
+        "cash_flow_count": len(covered_flows),
+        "external_net_flow_total": round(sum(flow["amount"] for flow in covered_flows), 8),
     }
