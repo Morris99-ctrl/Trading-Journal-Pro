@@ -60,15 +60,17 @@ class TradeService:
         symbol: Optional[str] = None,
         asset_class: Optional[AssetClass] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        date_basis: str = "entry"
     ) -> List[Trade]:
-        """Get all trades matching criteria"""
+        """Get matching trades; date_basis may be 'entry' or 'exit'."""
         return self.db.get_all_trades(
             status=status,
             symbol=symbol,
             asset_class=asset_class,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            date_basis=date_basis
         )
 
     def get_open_trades(self) -> List[Trade]:
@@ -120,7 +122,8 @@ class TradeService:
         trades = self.get_all_trades(
             status=TradeStatus.CLOSED,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            date_basis="exit"
         )
         return TradingCalculator.analyze_trade_series(trades, initial_balance=initial_balance)
 
