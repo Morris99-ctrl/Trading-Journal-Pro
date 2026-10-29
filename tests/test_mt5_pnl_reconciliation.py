@@ -174,6 +174,30 @@ class BrokerPnLPersistenceTests(unittest.TestCase):
         self.assertEqual(loaded.gross_pnl, -20.0)
         self.assertAlmostEqual(loaded.net_pnl, -24.4)
 
+    def test_update_trade_persists_reconciled_broker_amounts(self):
+        trade = Trade(
+            id="MT5-update",
+            symbol="EURUSD",
+            trade_type=TradeType.BUY,
+            quantity=1.0,
+            entry_price=1.1,
+            exit_price=None,
+            status=TradeStatus.OPEN,
+        )
+        self.assertTrue(self.db.add_trade(trade))
+        trade.status = TradeStatus.CLOSED
+        trade.exit_price = 1.2
+        trade.exit_time = datetime(2026, 1, 2)
+        trade.broker_gross_pnl = 123.45
+        trade.broker_net_pnl = 120.10
+        self.assertTrue(self.db.update_trade(trade))
+
+        loaded = self.db.get_trade("MT5-update")
+        self.assertEqual(loaded.broker_gross_pnl, 123.45)
+        self.assertEqual(loaded.broker_net_pnl, 120.10)
+        self.assertEqual(loaded.net_pnl, 120.10)
+
+
     def test_manual_trade_without_broker_values_keeps_existing_formula(self):
         trade = Trade(
             id="manual",
