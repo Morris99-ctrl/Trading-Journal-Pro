@@ -55,7 +55,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 
 ## Safe baseline tests added
 
-Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, `tests/test_sample_data_safety.py`, `tests/test_financial_calculations.py`, and `tests/test_mt5_pnl_reconciliation.py`. Coverage includes trade-model P&L behavior, CLI web launch behavior, safe demo seeding, Sharpe/Sortino assumptions, exit-date period filtering, entry-date cohort filtering, invalid date-basis rejection, realized-equity chronology, peak-to-trough drawdown, initial-balance validation, broker deal aggregation with partial exits/fees/swaps, reversal and over-exit rejection, broker-P&L database persistence, and guardrails against unsupported broker-linked return/cash-risk estimates. These tests use mocks and in-memory objects and do not touch the journal database. The expanded suite, including sample-data safety tests, passed on Python 3.11 and 3.12 in GitHub Actions. Run locally with `python -m unittest discover -s tests -v`. This remains a regression suite, not full application validation.
+Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, `tests/test_sample_data_safety.py`, `tests/test_financial_calculations.py`, `tests/test_mt5_pnl_reconciliation.py`, and `tests/test_portfolio_analytics.py`. Coverage includes trade-model P&L behavior, CLI web launch behavior, safe demo seeding, Sharpe/Sortino assumptions, exit-date period filtering, entry-date cohort filtering, invalid date-basis rejection, realized-equity chronology, peak-to-trough drawdown, initial-balance validation, broker deal aggregation with partial exits/fees/swaps, reversal and over-exit rejection, broker-P&L database persistence, guardrails against unsupported broker-linked return/cash-risk estimates, account-equity/cash-flow persistence, Modified Dietz deposit/withdrawal adjustments, flow-neutral drawdown, currency validation, and risk-ratio cadence checks. These tests use mocks and in-memory objects and do not touch the journal database. The expanded suite, including sample-data safety tests, passed on Python 3.11 and 3.12 in GitHub Actions. Run locally with `python -m unittest discover -s tests -v`. This remains a regression suite, not full application validation.
 
 ## Phase 0 execution plan
 
@@ -73,6 +73,12 @@ Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, `tests/t
 - Each high-priority finding has evidence, a remediation plan, and a regression test or documented reason why automated testing is not possible.
 - No finding is marked fixed without verification.
 
+
+## Portfolio equity and cash-flow analytics follow-up
+
+Added `portfolio_analytics.py` for a portfolio return series built from persisted account-equity snapshots and separately recorded external deposits/withdrawals. `TradeDatabase` stores snapshots and cash flows in dedicated SQLite tables, and `TradeService` exposes record/query methods. Each snapshot interval uses Modified Dietz: (ending equity - starting equity - net external flow) divided by starting equity plus time-weighted external flows. Drawdown is calculated on the compounded, flow-adjusted return index so a deposit cannot create a false performance peak. Sharpe and Sortino are unannualized and only available when there are at least two valid returns and consistent snapshot intervals.
+
+Limitations are explicit: these are account snapshots, not inferred values; the engine does not derive open-position mark-to-market equity from trade rows. Modified Dietz is an approximation unless external flows are bracketed by valuations. Missing/invalid intervals suppress aggregate return/drawdown and risk ratios rather than pretending the data is complete. Account and cash-flow currencies must match. Automated tests cover deposits, withdrawals, drawdown neutrality, timestamp/currency validation, interval cadence, and SQLite persistence. Live broker snapshot ingestion and UI integration remain future work.
 
 ## Broker P&L downstream integrity follow-up
 
