@@ -35,7 +35,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 | P0-09 | High | `mt5_service.py` groups deals by `position_id` and selects entry/exit deals (around lines 126-192). | Test partial exits, multiple entries, reversals, commissions, swaps, and broker-reported realized P&L against imported journal values. | Open |
 | P0-10 | Medium | `cli.py` originally called `os.system` in the `web` command without importing `os`. | Added `import os` and a regression test for the `web` command. Verify via CI; broader CLI behavior still needs testing. | Fixed in audit branch; expanded CI suite passed |
 | P0-11 | Medium | API handlers in `web_app.py` return exception strings to clients in several error paths. | Return stable generic errors to clients and log details server-side without leaking secrets or internal state. | Open |
-| P0-12 | Medium | `test_suite.py` removes `test_trading.db` and `test_import.db` if present, writes `test_export.csv`, and unconditionally deletes those same paths at the end. These are fixed relative paths in the current working directory. | Do not run from a user's project/data directory. Migrate database and export paths to a `tempfile.TemporaryDirectory()` and use a standard test runner. | Open |
+| P0-12 | Medium | `test_suite.py` originally removed and overwrote fixed relative paths such as `test_trading.db`, `test_import.db`, and `test_export.csv`. | The suite now stores its database and CSV files inside `tempfile.TemporaryDirectory()`, and a `unittest` wrapper runs it in CI. Regression suite passes on Python 3.11 and 3.12. | Fixed on audit branch; not merged |
 | P0-13 | Medium | `requirements.txt` uses minimum version constraints only; no lockfile is present. | Define a tested dependency strategy and keep CI checks stable as the baseline becomes reproducible. | Open |
 | P0-14 | Medium | `data.py` CSV import and `web_app.py` upload paths need deeper validation review. | Test malformed rows, duplicate IDs, invalid numeric values, oversized/mislabelled uploads, and spreadsheet formula payloads before changing behavior. | Open |
 
@@ -47,7 +47,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 | Recent branch/commit inventory | Completed |
 | GitHub Actions workflow inventory | Workflow added on audit branch; safe unit tests passed on Python 3.11 and 3.12 |
 | Static inspection of key application/test modules | Initial pass completed |
-| Run legacy `test_suite.py` | **Not run**: it deletes fixed-name files in the working directory; inspect and isolate before execution |
+| Run legacy `test_suite.py` | Executed through the safe `unittest` wrapper in CI after moving its database/CSV artifacts into a temporary directory; passed on Python 3.11 and 3.12 |
 | Launch web app and exercise API | **Not run** |
 | MT5 integration test | **Not run; requires supported local MT5 terminal/account environment** |
 | Dependency/security scan | **Not run** |
@@ -59,7 +59,7 @@ Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, and `tes
 ## Phase 0 execution plan
 
 1. Reproduce the baseline in a controlled environment without connecting to a live trading account.
-2. Refactor the legacy suite to use temporary directories before executing it.
+2. **Completed:** Refactor the legacy suite to use temporary directories and include it in CI.
 3. Expand safe tests for calculations, service/database behavior, CSV validation, and date-period semantics.
 4. Confirm each finding against exact code paths and assign severity based on realistic exposure and impact.
 5. Record test commands, environment details, outputs, and known limitations.
