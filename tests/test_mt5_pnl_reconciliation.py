@@ -72,6 +72,13 @@ class MT5DealAggregationTests(unittest.TestCase):
         ])
         self.assertIsNone(result)
 
+    def test_exit_volume_greater_than_entry_volume_is_rejected(self):
+        result = MT5SyncService.aggregate_position_deals([
+            deal(1, 0, 0, 1.0, 2000.0, time=100),
+            deal(2, 1, 1, 1.2, 2010.0, profit=12.0, time=200),
+        ])
+        self.assertIsNone(result)
+
 
 class FakeTradeService:
     def __init__(self):
@@ -212,6 +219,26 @@ class BrokerPnLPersistenceTests(unittest.TestCase):
         )
         self.assertAlmostEqual(trade.gross_pnl, 10.0)
         self.assertAlmostEqual(trade.net_pnl, 8.75)
+
+    def test_broker_trade_does_not_publish_unsupported_return_or_cash_risk(self):
+        trade = Trade(
+            id="MT5-risk", symbol="XAUUSD", trade_type=TradeType.BUY,
+            quantity=1.0, entry_price=2000.0, exit_price=2010.0,
+            stop_loss=1990.0, status=TradeStatus.CLOSED, position_id="888",
+            broker_gross_pnl=100.0, broker_net_pnl=96.0,
+        )
+        self.assertIsNone(trade.return_pct)
+        self.assertIsNone(trade.planned_total_risk)
+        self.assertIsNone(trade.r_multiple)
+
+    def test_realized_pnl_calculator_accepts_broker_pnl_without_exit_price(self):
+        from calculators import TradingCalculator
+        trade = Trade(
+            id="MT5-no-exit-price", symbol="XAUUSD", trade_type=TradeType.BUY,
+            quantity=1.0, entry_price=2000.0, exit_price=None,
+            status=TradeStatus.CLOSED, position_id="889", broker_net_pnl=42.5,
+        )
+        self.assertEqual(TradingCalculator.calculate_realized_pnl(trade), 42.5)
 
 
 if __name__ == "__main__":
