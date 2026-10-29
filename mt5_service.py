@@ -121,7 +121,12 @@ class MT5SyncService:
             sum(float(d.price) * float(d.volume) for d in exits) / exit_volume
             if exit_volume > 0 else None
         )
-        closed = exit_volume >= entry_volume - max(1e-8, entry_volume * 1e-6)
+        volume_tolerance = max(1e-8, entry_volume * 1e-6)
+        # Over-exit volume indicates incomplete, duplicated, or inconsistent history.
+        # Do not silently classify it as a closed trade.
+        if exit_volume > entry_volume + volume_tolerance:
+            return None
+        closed = abs(exit_volume - entry_volume) <= volume_tolerance
         gross_pnl = sum(float(getattr(d, "profit", 0.0) or 0.0) for d in ordered)
         commission_signed = sum(float(getattr(d, "commission", 0.0) or 0.0) for d in ordered)
         swap = sum(float(getattr(d, "swap", 0.0) or 0.0) for d in ordered)
