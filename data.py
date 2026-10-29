@@ -7,6 +7,7 @@ import sqlite3
 import csv
 import os
 import shutil
+import math
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pathlib import Path
@@ -392,7 +393,7 @@ class TradeDatabase:
             raise ValueError("account_id must not be empty")
         if not isinstance(captured_at, datetime):
             raise ValueError("captured_at must be a datetime")
-        if not all(__import__("math").isfinite(float(value)) for value in (balance, equity)):
+        if not all(math.isfinite(float(value)) for value in (balance, equity)):
             raise ValueError("balance and equity must be finite numbers")
         if balance < 0 or equity < 0:
             raise ValueError("balance and equity cannot be negative")
