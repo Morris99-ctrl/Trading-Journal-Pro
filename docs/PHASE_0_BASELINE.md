@@ -4,7 +4,7 @@
 **Baseline branch:** `main`  
 **Audit branch:** `phase-0/baseline-audit`  
 **Audit date:** 2026-10-29  
-**Status:** Static baseline underway. Safe model and CLI regression tests pass in CI; sample-data startup safety changes and their regression tests have now been added and are awaiting CI confirmation.
+**Status:** Static baseline underway. Safe model, CLI, and sample-data safety regression tests pass in CI on Python 3.11 and 3.12. The sample-data startup remediation is verified on the audit branch; broader application validation remains outstanding.
 
 ## Scope and limitations
 
@@ -27,7 +27,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 | P0-01 | High | `web_app.py` sets `app.config["SECRET_KEY"]` to a hard-coded literal (line 22). | Move secret configuration to environment/configuration; fail safely when production secret is missing; inspect history and rotate if it was used outside local development. | Open |
 | P0-02 | High | `templates/index.html` builds table/detail/modal markup with `innerHTML`, including trade-derived values (e.g. around lines 802 and 951). | Trace all interpolated values and prove exploitability; render user data with safe DOM APIs/textContent or contextual escaping; add XSS regression tests. | Open |
 | P0-03 | High | `web_app.py` exposes mutating API routes for trades and MT5 sync; no authentication/authorization was visible in the inspected route handlers. `main.py` binds to loopback by default. | Document intended deployment. Keep local-only deployment explicit; add appropriate access control and CSRF protection if browser sessions or remote access are supported. | Open |
-| P0-04 | High | `main.py` and `cli.py` seeded sample trades automatically when the database was empty. | Demo seeding is now opt-in via `--demo`; both entry points refuse to seed into a non-empty journal, and the CLI `sample` command has the same guard. Regression tests added; awaiting CI confirmation. | Remediation added on audit branch; verification pending |
+| P0-04 | High | `main.py` and `cli.py` seeded sample trades automatically when the database was empty. | Demo seeding is now opt-in via `--demo`; both entry points refuse to seed into a non-empty journal, and the CLI `sample` command has the same guard. Regression tests pass on Python 3.11 and 3.12. | Fixed on audit branch; not merged |
 | P0-05 | High | `README.md` includes a concrete-looking MT5 server/account label: `FBS-Real (#42920594)`. | Confirm whether this is synthetic. Remove or replace with clearly fictional example data if it identifies a real account. | Open |
 | P0-06 | High | `data.py` backup path uses `shutil.copy2` for the database (around line 126). | Verify database connection/transaction behavior; use SQLite's online backup API and test restore integrity. | Open |
 | P0-07 | High | `calculators.py` computes Sharpe/Sortino from a list of trade percentage returns (around lines 158-172; aggregation around 237-240). | Review return definitions and annualization assumptions. Do not present trade-level ratios as annualized portfolio risk metrics without a defensible sampling model. | Open |
@@ -54,7 +54,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 
 ## Safe baseline tests added
 
-Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, and `tests/test_sample_data_safety.py`. Coverage includes trade-model P&L behavior, CLI web launch behavior, no automatic sample seeding, explicit `--demo` seeding for an empty journal, and refusal to mix demo data into an existing journal. These tests use mocks and in-memory objects and do not touch the journal database. The expanded suite previously passed on Python 3.11 and 3.12; the new sample-data safety tests are awaiting CI confirmation. Run locally with `python -m unittest discover -s tests -v`. This remains a regression suite, not full application validation.
+Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, and `tests/test_sample_data_safety.py`. Coverage includes trade-model P&L behavior, CLI web launch behavior, no automatic sample seeding, explicit `--demo` seeding for an empty journal, and refusal to mix demo data into an existing journal. These tests use mocks and in-memory objects and do not touch the journal database. The expanded suite, including sample-data safety tests, passed on Python 3.11 and 3.12 in GitHub Actions. Run locally with `python -m unittest discover -s tests -v`. This remains a regression suite, not full application validation.
 
 ## Phase 0 execution plan
 
