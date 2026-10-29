@@ -4,7 +4,7 @@
 **Baseline branch:** `main`  
 **Audit branch:** `phase-0/baseline-audit`  
 **Audit date:** 2026-10-29  
-**Status:** Static baseline underway; safe model tests and a CLI regression test added. The original model-only suite passed on Python 3.11 and 3.12. The expanded suite exposed a runtime import error in the MT5 service type annotation; a postponed-annotations fix is committed and its CI validation is pending.
+**Status:** Static baseline underway; safe model tests and a CLI regression test added. The original model-only suite passed on Python 3.11 and 3.12. The expanded suite exposed a runtime import error in the MT5 service type annotation; a postponed-annotations fix is committed and the expanded suite now passes on Python 3.11 and 3.12.
 
 ## Scope and limitations
 
@@ -33,7 +33,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 | P0-07 | High | `calculators.py` computes Sharpe/Sortino from a list of trade percentage returns (around lines 158-172; aggregation around 237-240). | Review return definitions and annualization assumptions. Do not present trade-level ratios as annualized portfolio risk metrics without a defensible sampling model. | Open |
 | P0-08 | High | `data.py` filters `get_all_trades` date ranges on `entry_time` (around lines 218-246). | Define entry-cohort vs. realized-period reporting and test trades entered outside but closed inside a requested period. | Open |
 | P0-09 | High | `mt5_service.py` groups deals by `position_id` and selects entry/exit deals (around lines 126-192). | Test partial exits, multiple entries, reversals, commissions, swaps, and broker-reported realized P&L against imported journal values. | Open |
-| P0-10 | Medium | `cli.py` originally called `os.system` in the `web` command without importing `os`. | Added `import os` and a regression test for the `web` command. Verify via CI; broader CLI behavior still needs testing. | Fixed in audit branch; CI pending |
+| P0-10 | Medium | `cli.py` originally called `os.system` in the `web` command without importing `os`. | Added `import os` and a regression test for the `web` command. Verify via CI; broader CLI behavior still needs testing. | Fixed in audit branch; expanded CI suite passed |
 | P0-11 | Medium | API handlers in `web_app.py` return exception strings to clients in several error paths. | Return stable generic errors to clients and log details server-side without leaking secrets or internal state. | Open |
 | P0-12 | Medium | `test_suite.py` removes `test_trading.db` and `test_import.db` if present, writes `test_export.csv`, and unconditionally deletes those same paths at the end. These are fixed relative paths in the current working directory. | Do not run from a user's project/data directory. Migrate database and export paths to a `tempfile.TemporaryDirectory()` and use a standard test runner. | Open |
 | P0-13 | Medium | `requirements.txt` uses minimum version constraints only; no lockfile is present. | Define a tested dependency strategy and keep CI checks stable as the baseline becomes reproducible. | Open |
