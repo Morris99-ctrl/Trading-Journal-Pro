@@ -3,6 +3,8 @@ MetaTrader 5 (MT5) Automated Synchronization Service
 Direct connection via MT5 Python IPC API to sync trades, orders, commissions, and swap fees.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from models import Trade, TradeType, TradeStatus, AssetClass
