@@ -125,7 +125,14 @@ class Trade:
 
     @property
     def return_pct(self) -> Optional[float]:
-        """Percentage return on position capital"""
+        """Percentage return on a simple price × quantity notional.
+
+        This is only a rough manual-trade diagnostic. Broker-linked positions
+        need contract size, tick value, and account-currency conversion data to
+        define a defensible return denominator, so their return is unknown.
+        """
+        if self.position_id is not None:
+            return None
         net = self.net_pnl
         if net is None or self.invested_capital == 0:
             return None
@@ -153,7 +160,15 @@ class Trade:
 
     @property
     def planned_total_risk(self) -> Optional[float]:
-        """Total dollar amount at risk based on stop loss"""
+        """Estimated cash risk for manual trades with a known unit multiplier.
+
+        MT5 volume is typically expressed in lots, and price distance × lots
+        is not a cash-risk calculation without the symbol contract/tick value.
+        Return unknown for broker-linked trades rather than publishing a false
+        risk estimate.
+        """
+        if self.position_id is not None:
+            return None
         r_unit = self.planned_risk_per_unit
         if r_unit is None:
             return None
