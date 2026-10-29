@@ -4,7 +4,7 @@
 **Baseline branch:** `main`  
 **Audit branch:** `phase-0/baseline-audit`  
 **Audit date:** 2026-10-29  
-**Status:** Static baseline started; safe model characterization tests added; runtime test execution is still pending.
+**Status:** Static baseline underway; safe model characterization tests and a CLI regression test added; GitHub Actions passed on Python 3.11 and 3.12. Full application/runtime validation remains pending.
 
 ## Scope and limitations
 
@@ -16,7 +16,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 
 - Only `main` was present at the time of inventory.
 - The recent commit listing returned one initial commit.
-- No `.github/workflows/` directory or GitHub Actions runs were found.
+- The audit branch now includes `.github/workflows/tests.yml`; its latest run passed the safe unit-test suite on Python 3.11 and 3.12. This workflow was added after the initial inventory.
 - Dependencies are specified with minimum versions, not a lockfile or fully pinned requirements.
 - `.gitignore` excludes Python caches, virtual environments, environment files, logs, SQLite/database files, and `instance/`.
 
@@ -33,10 +33,10 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 | P0-07 | High | `calculators.py` computes Sharpe/Sortino from a list of trade percentage returns (around lines 158-172; aggregation around 237-240). | Review return definitions and annualization assumptions. Do not present trade-level ratios as annualized portfolio risk metrics without a defensible sampling model. | Open |
 | P0-08 | High | `data.py` filters `get_all_trades` date ranges on `entry_time` (around lines 218-246). | Define entry-cohort vs. realized-period reporting and test trades entered outside but closed inside a requested period. | Open |
 | P0-09 | High | `mt5_service.py` groups deals by `position_id` and selects entry/exit deals (around lines 126-192). | Test partial exits, multiple entries, reversals, commissions, swaps, and broker-reported realized P&L against imported journal values. | Open |
-| P0-10 | Medium | `cli.py` imports `sys` but the `web` command calls `os.system` (near the start of the command loop); no `os` import appears in the inspected imports. | Reproduce the CLI web-launch path and fix with a regression test. | Open |
+| P0-10 | Medium | `cli.py` originally called `os.system` in the `web` command without importing `os`. | Added `import os` and a regression test for the `web` command. Verify via CI; broader CLI behavior still needs testing. | Fixed in audit branch; CI pending |
 | P0-11 | Medium | API handlers in `web_app.py` return exception strings to clients in several error paths. | Return stable generic errors to clients and log details server-side without leaking secrets or internal state. | Open |
-| P0-12 | Medium | `test_suite.py` is a custom assert-based runner that writes fixed filenames such as `test_trading.db` and deletes those files. | Run only in an isolated workspace initially; migrate to a standard test runner with temporary directories/fixtures and ensure test cleanup cannot touch user data. | Open |
-| P0-13 | Medium | `requirements.txt` uses minimum version constraints only; no CI workflow was found. | Add a tested dependency strategy and CI checks after the baseline environment is reproducible. | Open |
+| P0-12 | Medium | `test_suite.py` removes `test_trading.db` and `test_import.db` if present, writes `test_export.csv`, and unconditionally deletes those same paths at the end. These are fixed relative paths in the current working directory. | Do not run from a user's project/data directory. Migrate database and export paths to a `tempfile.TemporaryDirectory()` and use a standard test runner. | Open |
+| P0-13 | Medium | `requirements.txt` uses minimum version constraints only; no lockfile is present. | Define a tested dependency strategy and keep CI checks stable as the baseline becomes reproducible. | Open |
 | P0-14 | Medium | `data.py` CSV import and `web_app.py` upload paths need deeper validation review. | Test malformed rows, duplicate IDs, invalid numeric values, oversized/mislabelled uploads, and spreadsheet formula payloads before changing behavior. | Open |
 
 ## Baseline checks
@@ -45,22 +45,22 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 |---|---|
 | Repository root inventory | Completed |
 | Recent branch/commit inventory | Completed |
-| GitHub Actions workflow inventory | No workflows found |
+| GitHub Actions workflow inventory | Workflow added on audit branch; safe unit tests passed on Python 3.11 and 3.12 |
 | Static inspection of key application/test modules | Initial pass completed |
-| Run existing test suite | **Not run in this environment** |
+| Run legacy `test_suite.py` | **Not run**: it deletes fixed-name files in the working directory; inspect and isolate before execution |
 | Launch web app and exercise API | **Not run** |
 | MT5 integration test | **Not run; requires supported local MT5 terminal/account environment** |
 | Dependency/security scan | **Not run** |
 
 ## Safe baseline tests added
 
-Added `tests/test_models_baseline.py`, a standard-library `unittest` suite covering long/short realized P&L after costs, open-trade realized-P&L behavior, rejection of double-closing, and core serialization fields. These tests use in-memory model objects only and do not open, create, or delete journal database files. Run with `python -m unittest discover -s tests -v`. The tests have been committed to this audit branch but have **not yet been executed** in a runtime environment, so their pass/fail status remains unverified.
+Added `tests/test_models_baseline.py`, a standard-library `unittest` suite covering long/short realized P&L after costs, open-trade realized-P&L behavior, rejection of double-closing, and core serialization fields. Added `tests/test_cli_web_command.py` to verify that the CLI `web` command opens the local dashboard and invokes the launcher. These tests do not touch the journal database. The GitHub Actions workflow ran the suite successfully on Python 3.11 and 3.12. Run locally with `python -m unittest discover -s tests -v`. This is a small characterization suite, not full application validation.
 
 ## Phase 0 execution plan
 
-1. Obtain a reproducible local test environment without connecting to a live trading account.
-2. Run the existing suite in an isolated temporary workspace and record failures and side effects.
-3. Add a standard test runner and deterministic fixtures; preserve current behavior in characterization tests where appropriate.
+1. Reproduce the baseline in a controlled environment without connecting to a live trading account.
+2. Refactor the legacy suite to use temporary directories before executing it.
+3. Expand safe tests for calculations, service/database behavior, CSV validation, and date-period semantics.
 4. Confirm each finding against exact code paths and assign severity based on realistic exposure and impact.
 5. Record test commands, environment details, outputs, and known limitations.
 6. Use the audit branch for isolated changes; do not merge fixes into `main` until tests and diff review pass.
