@@ -110,41 +110,57 @@ class TradingCalculator:
 
     @staticmethod
     def calculate_drawdown_series(trades: List[Trade], initial_balance: float = 10000.0) -> Dict[str, Any]:
-        """
-        Calculate equity curve and drawdown profile.
-        Returns peak, max drawdown in $, max drawdown in %, and equity timeline.
-        """
-        closed_trades = [t for t in trades if t.is_closed and t.exit_price is not None]
-        closed_trades = sorted(closed_trades, key=lambda t: t.exit_time or t.entry_time or datetime.min)
+        """Calculate realized-equity curve and peak-to-trough drawdown."""
+        if initial_balance <= 0:
+            raise ValueError("Initial balance must be greater than zero")
 
+        closed_trades = [t for t in trades if t.is_closed and t.exit_price is not None]
+
+        def close_time(trade: Trade) -> datetime:
+            return trade.exit_time or trade.entry_time or datetime.min
+
+        # Epoch keys avoid Python errors when naive and aware datetimes are mixed.
+        def sort_key(trade: Trade) -> float:
+            timestamp = close_time(trade)
+            try:
+                return timestamp.timestamp()
+            except (OSError, OverflowError, ValueError):
+                return timestamp.replace(tzinfo=None).toordinal() * 86400 + (
+                    timestamp.hour * 3600 + timestamp.minute * 60 + timestamp.second
+                )
+
+        closed_trades.sort(key=sort_key)
         current_balance = initial_balance
         peak = initial_balance
         max_dd_dollars = 0.0
         max_dd_pct = 0.0
 
-        equity_curve = [{"time": (closed_trades[0].entry_time.isoformat() if closed_trades and closed_trades[0].entry_time else datetime.now().isoformat()), "equity": initial_balance}]
+        first_timestamp = (
+            close_time(closed_trades[0]).isoformat()
+            if closed_trades else datetime.now().isoformat()
+        )
+        equity_curve = [{"time": first_timestamp, "equity": round(initial_balance, 2)}]
 
-        for t in closed_trades:
-            pnl = t.net_pnl or 0.0
-            current_balance += pnl
-            timestamp = (t.exit_time or t.entry_time or datetime.now()).isoformat()
-            equity_curve.append({"time": timestamp, "equity": round(current_balance, 2)})
+        for trade in closed_trades:
+            current_balance += trade.net_pnl or 0.0
+            equity_curve.append({
+                "time": close_time(trade).isoformat(),
+                "equity": round(current_balance, 2),
+            })
 
             if current_balance > peak:
                 peak = current_balance
             else:
-                dd_dollars = peak - current_balance
-                dd_pct = (dd_dollars / peak * 100.0) if peak > 0 else 0.0
-                if dd_dollars > max_dd_dollars:
-                    max_dd_dollars = dd_dollars
-                if dd_pct > max_dd_pct:
-                    max_dd_pct = dd_pct
+                drawdown_dollars = peak - current_balance
+                drawdown_pct = drawdown_dollars / peak * 100.0
+                max_dd_dollars = max(max_dd_dollars, drawdown_dollars)
+                max_dd_pct = max(max_dd_pct, drawdown_pct)
 
         current_dd_dollars = max(0.0, peak - current_balance)
-        current_dd_pct = (current_dd_dollars / peak * 100.0) if peak > 0 else 0.0
+        current_dd_pct = current_dd_dollars / peak * 100.0
 
         return {
-            "initial_balance": initial_balance,
+            "initial_balance": round(initial_balance, 2),
             "current_balance": round(current_balance, 2),
             "peak_balance": round(peak, 2),
             "max_drawdown_dollars": round(max_dd_dollars, 2),
