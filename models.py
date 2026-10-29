@@ -131,7 +131,7 @@ class Trade:
         need contract size, tick value, and account-currency conversion data to
         define a defensible return denominator, so their return is unknown.
         """
-        if self.position_id is not None:
+        if self.position_id is not None or self.broker_gross_pnl is not None or self.broker_net_pnl is not None:
             return None
         net = self.net_pnl
         if net is None or self.invested_capital == 0:
@@ -167,7 +167,7 @@ class Trade:
         Return unknown for broker-linked trades rather than publishing a false
         risk estimate.
         """
-        if self.position_id is not None:
+        if self.position_id is not None or self.broker_gross_pnl is not None or self.broker_net_pnl is not None:
             return None
         r_unit = self.planned_risk_per_unit
         if r_unit is None:
