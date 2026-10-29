@@ -130,5 +130,55 @@ class ReportingDateBasisTests(unittest.TestCase):
         self.assertAlmostEqual(result["total_pnl"], 10.0)
 
 
+class DrawdownSeriesTests(unittest.TestCase):
+    @staticmethod
+    def closed_trade(trade_id, pnl, entry_time, exit_time):
+        return Trade(
+            id=trade_id,
+            symbol="TEST",
+            trade_type=TradeType.BUY,
+            quantity=1,
+            entry_price=100.0,
+            exit_price=100.0 + pnl,
+            entry_time=entry_time,
+            exit_time=exit_time,
+            status=TradeStatus.CLOSED,
+        )
+
+    def test_drawdown_tracks_peak_to_trough_and_current_drawdown(self):
+        trades = [
+            self.closed_trade("win", 100.0, datetime(2026, 1, 1), datetime(2026, 1, 3)),
+            self.closed_trade("loss-one", -50.0, datetime(2026, 1, 1), datetime(2026, 1, 4)),
+            self.closed_trade("loss-two", -100.0, datetime(2026, 1, 2), datetime(2026, 1, 5)),
+        ]
+        result = TradingCalculator.calculate_drawdown_series(trades, initial_balance=10000.0)
+        self.assertEqual(result["peak_balance"], 10100.0)
+        self.assertEqual(result["current_balance"], 9950.0)
+        self.assertEqual(result["max_drawdown_dollars"], 150.0)
+        self.assertAlmostEqual(result["max_drawdown_pct"], 150.0 / 10100.0 * 100.0, places=2)
+        self.assertEqual(result["current_drawdown_dollars"], 150.0)
+
+    def test_drawdown_curve_is_sorted_by_close_time(self):
+        late_close = self.closed_trade(
+            "late-close", 20.0, datetime(2026, 1, 1), datetime(2026, 1, 5)
+        )
+        early_close = self.closed_trade(
+            "early-close", 10.0, datetime(2026, 1, 4), datetime(2026, 1, 3)
+        )
+        result = TradingCalculator.calculate_drawdown_series(
+            [late_close, early_close], initial_balance=1000.0
+        )
+        times = [point["time"] for point in result["equity_curve"]]
+        self.assertEqual(times, sorted(times))
+        self.assertEqual(
+            [point["equity"] for point in result["equity_curve"]],
+            [1000.0, 1010.0, 1030.0],
+        )
+
+    def test_drawdown_rejects_non_positive_initial_balance(self):
+        with self.assertRaises(ValueError):
+            TradingCalculator.calculate_drawdown_series([], initial_balance=0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
