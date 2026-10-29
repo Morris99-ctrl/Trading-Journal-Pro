@@ -4,6 +4,7 @@ Trading Journal CLI
 Professional Command-Line Interface for trade tracking, analytics, and risk management.
 """
 
+import os
 import sys
 from typing import Optional
 from datetime import datetime, timedelta
@@ -13,7 +14,7 @@ from calculators import TradingCalculator
 
 
 class TradingJournalCLI:
-    """Institutional-grade CLI for trading journals"""
+    """Professional command-line interface for trading journals"""
 
     def __init__(self, service: TradeService):
         self.service = service
@@ -345,6 +346,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
     main()
