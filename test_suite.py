@@ -28,7 +28,7 @@ def run_tests():
     assert t_short.planned_risk_reward == 2.0, f"Expected RR 2.0, got {t_short.planned_risk_reward}"
     print("Models tests passed!")
 
-        with tempfile.TemporaryDirectory(prefix="trading-journal-tests-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="trading-journal-tests-") as temp_dir:
         test_db = os.path.join(temp_dir, "test_trading.db")
         print("Testing services & database...")
         srv = TradeService(test_db)
@@ -55,13 +55,13 @@ def run_tests():
         print("Position calculator passed:", res)
 
         print("Testing CSV Export/Import...")
-            export_file = os.path.join(temp_dir, "test_export.csv")
+        export_file = os.path.join(temp_dir, "test_export.csv")
         count = srv.export_csv(export_file)
         assert count == len(trades)
         assert os.path.exists(export_file)
 
         # Test import into a fresh DB
-            import_db = os.path.join(temp_dir, "test_import.db")
+        import_db = os.path.join(temp_dir, "test_import.db")
         srv_import = TradeService(import_db)
         imported_count = srv_import.import_csv(export_file)
         assert imported_count == count
