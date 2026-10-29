@@ -38,6 +38,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 | P0-12 | Medium | `test_suite.py` originally removed and overwrote fixed relative paths such as `test_trading.db`, `test_import.db`, and `test_export.csv`. | The suite now stores its database and CSV files inside `tempfile.TemporaryDirectory()`, and a `unittest` wrapper runs it in CI. Regression suite passes on Python 3.11 and 3.12. | Fixed on audit branch; not merged |
 | P0-13 | Medium | `requirements.txt` uses minimum version constraints only; no lockfile is present. | Define a tested dependency strategy and keep CI checks stable as the baseline becomes reproducible. | Open |
 | P0-14 | Medium | `data.py` CSV import and `web_app.py` upload paths need deeper validation review. | Test malformed rows, duplicate IDs, invalid numeric values, oversized/mislabelled uploads, and spreadsheet formula payloads before changing behavior. | Open |
+| P0-15 | Medium | `calculators.py` initialized the realized equity curve using the first trade's entry time even though trades are ordered by exit time; non-positive starting balances were also accepted. | Order realized equity points by close time, anchor the initial point at the first close, and reject non-positive initial balances. Add regression tests for peak-to-trough drawdown and chronological ordering. | Fixed on audit branch; not merged |
 
 ## Baseline checks
 
@@ -54,7 +55,7 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 
 ## Safe baseline tests added
 
-Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, `tests/test_sample_data_safety.py`, and `tests/test_financial_calculations.py`. Coverage includes trade-model P&L behavior, CLI web launch behavior, safe demo seeding, Sharpe/Sortino assumptions, exit-date period filtering, entry-date cohort filtering, and invalid date-basis rejection. These tests use mocks and in-memory objects and do not touch the journal database. The expanded suite, including sample-data safety tests, passed on Python 3.11 and 3.12 in GitHub Actions. Run locally with `python -m unittest discover -s tests -v`. This remains a regression suite, not full application validation.
+Added `tests/test_models_baseline.py`, `tests/test_cli_web_command.py`, `tests/test_sample_data_safety.py`, and `tests/test_financial_calculations.py`. Coverage includes trade-model P&L behavior, CLI web launch behavior, safe demo seeding, Sharpe/Sortino assumptions, exit-date period filtering, entry-date cohort filtering, invalid date-basis rejection, realized-equity chronology, peak-to-trough drawdown, and initial-balance validation. These tests use mocks and in-memory objects and do not touch the journal database. The expanded suite, including sample-data safety tests, passed on Python 3.11 and 3.12 in GitHub Actions. Run locally with `python -m unittest discover -s tests -v`. This remains a regression suite, not full application validation.
 
 ## Phase 0 execution plan
 
