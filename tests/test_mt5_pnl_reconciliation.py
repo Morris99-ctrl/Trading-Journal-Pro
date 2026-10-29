@@ -73,6 +73,73 @@ class MT5DealAggregationTests(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class FakeTradeService:
+    def __init__(self):
+        self.trades = {}
+
+    def get_trade(self, trade_id):
+        return self.trades.get(trade_id)
+
+    def create_trade(self, **kwargs):
+        trade = Trade(**kwargs)
+        self.trades[trade.id] = trade
+        return trade
+
+    def update_trade(self, trade):
+        self.trades[trade.id] = trade
+        return True
+
+
+class FakeMT5:
+    def __init__(self, deals):
+        self.deals = deals
+        self.shutdown_count = 0
+
+    def initialize(self, timeout=5000):
+        return True
+
+    def history_deals_get(self, start, end):
+        return self.deals
+
+    def history_orders_get(self, position):
+        return None
+
+    def shutdown(self):
+        self.shutdown_count += 1
+
+    def last_error(self):
+        return (0, "no error")
+
+
+class MT5SyncIntegrationTests(unittest.TestCase):
+    def test_sync_persists_broker_pnl_and_reconciles_new_partial_exit(self):
+        mt5 = FakeMT5([
+            deal(1, 0, 0, 1.0, 2000.0, commission=-2.0, time=100),
+            deal(2, 1, 1, 0.4, 2010.0, profit=40.0, commission=-0.8, time=200),
+        ])
+        sync = MT5SyncService()
+        sync._mt5 = mt5
+        service = FakeTradeService()
+
+        first = sync.sync_trades(service, from_date=datetime(1970, 1, 1), to_date=datetime(1970, 1, 2))
+        trade = service.get_trade("MT5-777")
+        self.assertEqual(first["imported"], 1)
+        self.assertEqual(trade.status, TradeStatus.OPEN)
+        self.assertIsNone(trade.broker_net_pnl)
+
+        mt5.deals.append(deal(3, 1, 1, 0.6, 1990.0, profit=-60.0, commission=-1.2, swap=-0.3, fee=-0.1, time=300))
+        second = sync.sync_trades(service, from_date=datetime(1970, 1, 1), to_date=datetime(1970, 1, 2))
+        trade = service.get_trade("MT5-777")
+
+        self.assertEqual(second["updated"], 1)
+        self.assertEqual(trade.status, TradeStatus.CLOSED)
+        self.assertAlmostEqual(trade.broker_gross_pnl, -20.0)
+        self.assertAlmostEqual(trade.broker_net_pnl, -24.4)
+        self.assertAlmostEqual(trade.net_pnl, -24.4)
+        self.assertAlmostEqual(second["total_pnl"], -24.4)
+        self.assertEqual(mt5.shutdown_count, 2)
+
+
 class BrokerPnLPersistenceTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="journal-broker-pnl-")
