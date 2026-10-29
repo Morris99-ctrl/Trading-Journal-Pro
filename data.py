@@ -80,6 +80,34 @@ class TradeDatabase:
                 )
             ''')
 
+            # Account-level snapshots and external cash flows for portfolio analytics.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS equity_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id TEXT NOT NULL DEFAULT 'default',
+                    captured_at TEXT NOT NULL,
+                    balance REAL NOT NULL,
+                    equity REAL NOT NULL,
+                    currency TEXT NOT NULL DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(account_id, captured_at)
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS portfolio_cash_flows (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id TEXT NOT NULL DEFAULT 'default',
+                    occurred_at TEXT NOT NULL,
+                    flow_type TEXT NOT NULL CHECK(flow_type IN ('deposit', 'withdrawal')),
+                    amount REAL NOT NULL CHECK(amount > 0),
+                    currency TEXT NOT NULL DEFAULT '',
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             # Ensure columns exist in case of legacy tables
             cursor.execute("PRAGMA table_info(trades)")
             columns = {col["name"] for col in cursor.fetchall()}
@@ -347,6 +375,96 @@ class TradeDatabase:
             cursor.execute('DELETE FROM trades')
             conn.commit()
             return True
+
+    # Portfolio equity snapshot and external cash-flow operations
+    def add_equity_snapshot(
+        self,
+        captured_at: datetime,
+        balance: float,
+        equity: float,
+        account_id: str = "default",
+        currency: str = "",
+        source: str = "manual",
+        notes: str = "",
+    ) -> int:
+        """Persist an actual account snapshot; duplicate account/timestamp pairs are rejected."""
+        if not account_id.strip():
+            raise ValueError("account_id must not be empty")
+        if not isinstance(captured_at, datetime):
+            raise ValueError("captured_at must be a datetime")
+        if not all(__import__("math").isfinite(float(value)) for value in (balance, equity)):
+            raise ValueError("balance and equity must be finite numbers")
+        if balance < 0 or equity < 0:
+            raise ValueError("balance and equity cannot be negative")
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO equity_snapshots
+                   (account_id, captured_at, balance, equity, currency, source, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (account_id, captured_at.isoformat(), float(balance), float(equity),
+                 currency.upper(), source, notes),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def get_equity_snapshots(
+        self, account_id: str = "default", start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM equity_snapshots WHERE account_id = ?"
+        params: List[Any] = [account_id]
+        if start_date:
+            query += " AND captured_at >= ?"
+            params.append(start_date.isoformat())
+        if end_date:
+            query += " AND captured_at <= ?"
+            params.append(end_date.isoformat())
+        query += " ORDER BY captured_at ASC"
+        with self._connection() as conn:
+            return [dict(row) for row in conn.execute(query, params).fetchall()]
+
+    def add_portfolio_cash_flow(
+        self, occurred_at: datetime, flow_type: str, amount: float,
+        account_id: str = "default", currency: str = "", notes: str = "",
+    ) -> int:
+        """Record positive-magnitude deposit/withdrawal; type determines sign in analytics."""
+        normalized_type = flow_type.strip().lower()
+        if normalized_type not in ("deposit", "withdrawal"):
+            raise ValueError("flow_type must be 'deposit' or 'withdrawal'")
+        if not isinstance(occurred_at, datetime):
+            raise ValueError("occurred_at must be a datetime")
+        if not __import__("math").isfinite(float(amount)) or amount <= 0:
+            raise ValueError("amount must be a finite number greater than zero")
+        if not account_id.strip():
+            raise ValueError("account_id must not be empty")
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO portfolio_cash_flows
+                   (account_id, occurred_at, flow_type, amount, currency, notes)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (account_id, occurred_at.isoformat(), normalized_type, float(amount),
+                 currency.upper(), notes),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def get_portfolio_cash_flows(
+        self, account_id: str = "default", start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM portfolio_cash_flows WHERE account_id = ?"
+        params: List[Any] = [account_id]
+        if start_date:
+            query += " AND occurred_at >= ?"
+            params.append(start_date.isoformat())
+        if end_date:
+            query += " AND occurred_at <= ?"
+            params.append(end_date.isoformat())
+        query += " ORDER BY occurred_at ASC, id ASC"
+        with self._connection() as conn:
+            return [dict(row) for row in conn.execute(query, params).fetchall()]
 
     # Daily Log Operations
     def save_daily_log(
