@@ -16,7 +16,7 @@ class TradingCalculator:
     @staticmethod
     def calculate_realized_pnl(trade: Trade) -> float:
         """Calculate net realized P&L for a closed trade"""
-        if trade.status != TradeStatus.CLOSED or trade.exit_price is None:
+        if trade.status != TradeStatus.CLOSED:
             return 0.0
         return trade.net_pnl if trade.net_pnl is not None else 0.0
 
@@ -75,7 +75,7 @@ class TradingCalculator:
     @staticmethod
     def calculate_streaks(trades: List[Trade]) -> Dict[str, int]:
         """Calculate max winning streak, max losing streak, and current streak"""
-        closed_trades = [t for t in trades if t.is_closed and t.exit_price is not None]
+        closed_trades = [t for t in trades if t.is_closed and t.net_pnl is not None]
         # Sort chronologically by exit time or entry time
         closed_trades = sorted(closed_trades, key=lambda t: t.exit_time or t.entry_time or datetime.min)
 
@@ -114,7 +114,7 @@ class TradingCalculator:
         if initial_balance <= 0:
             raise ValueError("Initial balance must be greater than zero")
 
-        closed_trades = [t for t in trades if t.is_closed and t.exit_price is not None]
+        closed_trades = [t for t in trades if t.is_closed and t.net_pnl is not None]
 
         def close_time(trade: Trade) -> datetime:
             return trade.exit_time or trade.entry_time or datetime.min
@@ -208,7 +208,7 @@ class TradingCalculator:
     @staticmethod
     def analyze_trade_series(trades: List[Trade], initial_balance: float = 10000.0) -> Dict[str, Any]:
         """Comprehensive analysis of closed trades with advanced quantitative metrics"""
-        closed_trades = [t for t in trades if t.is_closed and t.exit_price is not None]
+        closed_trades = [t for t in trades if t.is_closed and t.net_pnl is not None]
         if not closed_trades:
             return TradingCalculator._empty_analysis(initial_balance)
 
@@ -254,10 +254,12 @@ class TradingCalculator:
         # Recovery factor: Net Profit / Max Drawdown
         recovery_factor = (total_pnl / max_drawdown_dollars) if max_drawdown_dollars > 0 else float('inf')
 
-        # Trade-level position returns: useful for per-trade diagnostics, not portfolio-period risk ratios.
+        # These legacy diagnostics use only trades with a defensible return denominator.
+        # Broker-linked trades are intentionally excluded until contract metadata and
+        # a time-based portfolio equity series are available.
         return_pcts = [t.return_pct / 100.0 for t in closed_trades if t.return_pct is not None]
-        sharpe = TradingCalculator.calculate_sharpe_ratio(return_pcts) if return_pcts else 0.0
-        sortino = TradingCalculator.calculate_sortino_ratio(return_pcts) if return_pcts else 0.0
+        sharpe = TradingCalculator.calculate_sharpe_ratio(return_pcts) if len(return_pcts) >= 2 else 0.0
+        sortino = TradingCalculator.calculate_sortino_ratio(return_pcts) if len(return_pcts) >= 2 else 0.0
 
         # Calmar Ratio: Return % / Max Drawdown %
         total_return_pct = (total_pnl / initial_balance * 100.0) if initial_balance > 0 else 0.0
@@ -300,6 +302,8 @@ class TradingCalculator:
             "recovery_factor": round(recovery_factor, 2) if recovery_factor != float('inf') else "inf",
             "sharpe_ratio": round(sharpe, 2),
             "sortino_ratio": round(sortino, 2) if sortino != float('inf') else "inf",
+            "return_observation_count": len(return_pcts),
+            "return_metrics_scope": "manual trades with a valid price-notional denominator; not portfolio-period ratios",
             "calmar_ratio": round(calmar, 2),
             "max_win_streak": streaks["max_win_streak"],
             "max_loss_streak": streaks["max_loss_streak"],
@@ -342,6 +346,8 @@ class TradingCalculator:
             "recovery_factor": 0.0,
             "sharpe_ratio": 0.0,
             "sortino_ratio": 0.0,
+            "return_observation_count": 0,
+            "return_metrics_scope": "manual trades with a valid price-notional denominator; not portfolio-period ratios",
             "calmar_ratio": 0.0,
             "max_win_streak": 0,
             "max_loss_streak": 0,
