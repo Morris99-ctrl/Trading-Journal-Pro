@@ -14,7 +14,7 @@ from calculators import TradingCalculator
 
 
 class TradingJournalCLI:
-    """Professional command-line interface for trading journals"""
+    """Institutional-grade CLI for trading journals"""
 
     def __init__(self, service: TradeService):
         self.service = service
@@ -346,4 +346,6 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
+
     main()
