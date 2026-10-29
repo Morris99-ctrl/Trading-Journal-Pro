@@ -221,9 +221,18 @@ class TradeDatabase:
         symbol: Optional[str] = None,
         asset_class: Optional[AssetClass] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        date_basis: str = "entry"
     ) -> List[Trade]:
-        """Fetch trades with optional filtering, ordered chronologically descending"""
+        """Fetch trades with optional filters.
+
+        date_basis='entry' filters by entry_time (trade-cohort view).
+        date_basis='exit' filters by exit_time (realized-performance view).
+        """
+        if date_basis not in ("entry", "exit"):
+            raise ValueError("date_basis must be 'entry' or 'exit'")
+
+        date_column = "entry_time" if date_basis == "entry" else "exit_time"
         query = 'SELECT * FROM trades WHERE 1=1'
         params: List[Any] = []
 
@@ -237,13 +246,14 @@ class TradeDatabase:
             query += ' AND asset_class = ?'
             params.append(asset_class.value)
         if start_date:
-            query += ' AND entry_time >= ?'
+            query += f' AND {date_column} >= ?'
             params.append(start_date.isoformat())
         if end_date:
-            query += ' AND entry_time <= ?'
+            query += f' AND {date_column} <= ?'
             params.append(end_date.isoformat())
 
-        query += ' ORDER BY entry_time DESC'
+        order_column = "entry_time" if date_basis == "entry" else "exit_time"
+        query += f' ORDER BY {order_column} DESC'
 
         with self._connection() as conn:
             cursor = conn.cursor()
