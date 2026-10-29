@@ -60,6 +60,8 @@ class TradeDatabase:
                     session TEXT DEFAULT 'NY',
                     position_id TEXT,
                     notes TEXT,
+                    broker_gross_pnl REAL,
+                    broker_net_pnl REAL,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
@@ -92,7 +94,9 @@ class TradeDatabase:
                 "tags": "ALTER TABLE trades ADD COLUMN tags TEXT DEFAULT ''",
                 "screenshot_path": "ALTER TABLE trades ADD COLUMN screenshot_path TEXT",
                 "session": "ALTER TABLE trades ADD COLUMN session TEXT DEFAULT 'NY'",
-                "position_id": "ALTER TABLE trades ADD COLUMN position_id TEXT"
+                "position_id": "ALTER TABLE trades ADD COLUMN position_id TEXT",
+                "broker_gross_pnl": "ALTER TABLE trades ADD COLUMN broker_gross_pnl REAL",
+                "broker_net_pnl": "ALTER TABLE trades ADD COLUMN broker_net_pnl REAL"
             }
 
             for col_name, sql in migrations.items():
@@ -159,8 +163,8 @@ class TradeDatabase:
                 id, symbol, trade_type, asset_class, quantity, entry_price,
                 exit_price, stop_loss, take_profit, commission, swap, entry_time,
                 exit_time, status, setup, rating, discipline_rating, tags,
-                screenshot_path, session, position_id, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                screenshot_path, session, position_id, notes, broker_gross_pnl, broker_net_pnl
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         with self._connection() as conn:
             cursor = conn.cursor()
@@ -187,7 +191,9 @@ class TradeDatabase:
                     trade.screenshot_path,
                     trade.session,
                     trade.position_id,
-                    trade.notes
+                    trade.notes,
+                    trade.broker_gross_pnl,
+                    trade.broker_net_pnl
                 ))
                 conn.commit()
                 return True
@@ -286,6 +292,8 @@ class TradeDatabase:
                 session = ?,
                 position_id = ?,
                 notes = ?,
+                broker_gross_pnl = ?,
+                broker_net_pnl = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         '''
@@ -314,6 +322,8 @@ class TradeDatabase:
                     trade.session,
                     trade.position_id,
                     trade.notes,
+                    trade.broker_gross_pnl,
+                    trade.broker_net_pnl,
                     trade.id
                 ))
                 conn.commit()
@@ -405,7 +415,7 @@ class TradeDatabase:
             "entry_price", "exit_price", "stop_loss", "take_profit",
             "commission", "swap", "entry_time", "exit_time", "status",
             "setup", "rating", "discipline_rating", "tags", "session",
-            "position_id", "notes", "net_pnl", "gross_pnl", "return_pct", "r_multiple"
+            "position_id", "notes", "broker_gross_pnl", "broker_net_pnl", "net_pnl", "gross_pnl", "return_pct", "r_multiple"
         ]
 
         with open(path, "w", newline="", encoding="utf-8") as f:
@@ -452,7 +462,9 @@ class TradeDatabase:
                         tags=row.get("tags", ""),
                         session=row.get("session", "NY"),
                         position_id=row.get("position_id"),
-                        notes=row.get("notes", "")
+                        notes=row.get("notes", ""),
+                        broker_gross_pnl=float(row["broker_gross_pnl"]) if row.get("broker_gross_pnl") else None,
+                        broker_net_pnl=float(row["broker_net_pnl"]) if row.get("broker_net_pnl") else None
                     )
                     existing = self.get_trade(trade.id)
                     if existing:
@@ -508,5 +520,7 @@ class TradeDatabase:
             screenshot_path=row["screenshot_path"] if "screenshot_path" in keys else None,
             session=row["session"] if ("session" in keys and row["session"]) else "NY",
             position_id=str(row["position_id"]) if ("position_id" in keys and row["position_id"]) else None,
-            notes=row["notes"] or ""
+            notes=row["notes"] or "",
+            broker_gross_pnl=float(row["broker_gross_pnl"]) if "broker_gross_pnl" in keys and row["broker_gross_pnl"] is not None else None,
+            broker_net_pnl=float(row["broker_net_pnl"]) if "broker_net_pnl" in keys and row["broker_net_pnl"] is not None else None
         )
