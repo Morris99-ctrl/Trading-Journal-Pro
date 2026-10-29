@@ -4,7 +4,7 @@
 **Baseline branch:** `main`  
 **Audit branch:** `phase-0/baseline-audit`  
 **Audit date:** 2026-10-29  
-**Status:** Static baseline started; runtime test execution is still pending.
+**Status:** Static baseline started; safe model characterization tests added; runtime test execution is still pending.
 
 ## Scope and limitations
 
@@ -51,6 +51,10 @@ Root modules/files include `main.py`, `web_app.py`, `ui.py`, `cli.py`, `models.p
 | Launch web app and exercise API | **Not run** |
 | MT5 integration test | **Not run; requires supported local MT5 terminal/account environment** |
 | Dependency/security scan | **Not run** |
+
+## Safe baseline tests added
+
+Added `tests/test_models_baseline.py`, a standard-library `unittest` suite covering long/short realized P&L after costs, open-trade realized-P&L behavior, rejection of double-closing, and core serialization fields. These tests use in-memory model objects only and do not open, create, or delete journal database files. Run with `python -m unittest discover -s tests -v`. The tests have been committed to this audit branch but have **not yet been executed** in a runtime environment, so their pass/fail status remains unverified.
 
 ## Phase 0 execution plan
 
