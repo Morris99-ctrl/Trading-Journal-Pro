@@ -8,9 +8,9 @@ An institutional-grade trading journal, automated MetaTrader 5 (MT5) synchroniza
 
 ### 1. Automated MetaTrader 5 (MT5) Synchronization
 - **Direct Terminal Integration**: Connects via the official MetaTrader 5 Python IPC API to read deals and orders directly from your local MT5 terminal.
-- **Round-Trip Reconciliation**: Pairs `DEAL_ENTRY_IN` and `DEAL_ENTRY_OUT` deals by `position_id` to extract lot size, entry price, exit price, commission, swap fees, and realized net P&L.
+- **Broker-authoritative P&L**: Aggregates all deals for a position, including partial exits, and uses MT5-reported profit, commission, swap, and fee amounts for realized net P&L. Price × volume remains a fallback only for manual trades without broker P&L.
 - **Stop Loss & Take Profit Extraction**: Pulls original order SL and TP targets automatically.
-- **Zero Duplicate Risk**: Keyed on unique MT5 position tickets (`MT5-<ticket>`), preventing double imports.
+- **Idempotent Position Reconciliation**: Uses MT5 position tickets (`MT5-<ticket>`) and refreshes existing MT5 records when later deals arrive. Reversal deals are skipped until the application has a dedicated lifecycle-splitting model.
 - **Auto-Asset Classification**: Automatically classifies tickers (e.g. `XAUUSD` -> Commodities, `EURUSD` -> Forex, `US30` -> Indices, `BTCUSDT` -> Crypto).
 
 ### 2. Modern Web Dashboard (Default)
@@ -42,6 +42,7 @@ An institutional-grade trading journal, automated MetaTrader 5 (MT5) synchroniza
 
 - Date-bounded realized-performance reports use **exit date**: a trade closed in the selected period is included even if it was opened earlier. Entry-date filtering remains available for trade-cohort analysis.
 - Sharpe and Sortino values currently use **per-trade position returns**, not daily portfolio returns. They are not annualized, because the journal does not establish a consistent daily portfolio-return series or a defensible number of trades per year.
+- MT5 broker gross/net P&L is persisted separately from the journal's price-based fallback. The database migration adds nullable columns, so existing manual trades retain their previous calculation behavior.
 - These per-trade ratios are diagnostic only and should not be compared directly with annualized portfolio ratios from fund factsheets. A future portfolio-risk module should calculate time-weighted daily equity returns before presenting annualized Sharpe/Sortino metrics.
 
 ---
