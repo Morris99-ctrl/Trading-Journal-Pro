@@ -297,10 +297,10 @@ class TradeDatabase:
             params.append(asset_class.value)
         if start_date:
             query += f' AND {date_column} >= ?'
-            params.append(_utc_iso(start_date))
+            params.append(start_date.isoformat())
         if end_date:
             query += f' AND {date_column} <= ?'
-            params.append(_utc_iso(end_date))
+            params.append(end_date.isoformat())
 
         order_column = "entry_time" if date_basis == "entry" else "exit_time"
         query += f' ORDER BY {order_column} DESC'
@@ -447,10 +447,10 @@ class TradeDatabase:
         params: List[Any] = [account_id]
         if start_date:
             query += " AND captured_at >= ?"
-            params.append(start_date.isoformat())
+            params.append(_utc_iso(start_date))
         if end_date:
             query += " AND captured_at <= ?"
-            params.append(end_date.isoformat())
+            params.append(_utc_iso(end_date))
         query += " ORDER BY captured_at ASC"
         with self._connection() as conn:
             rows = [dict(row) for row in conn.execute(query, params).fetchall()]
@@ -491,10 +491,10 @@ class TradeDatabase:
         params: List[Any] = [account_id]
         if start_date:
             query += " AND occurred_at >= ?"
-            params.append(start_date.isoformat())
+            params.append(_utc_iso(start_date))
         if end_date:
             query += " AND occurred_at <= ?"
-            params.append(end_date.isoformat())
+            params.append(_utc_iso(end_date))
         query += " ORDER BY occurred_at ASC, id ASC"
         with self._connection() as conn:
             rows = [dict(row) for row in conn.execute(query, params).fetchall()]
