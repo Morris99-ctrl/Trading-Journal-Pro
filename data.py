@@ -413,13 +413,17 @@ class TradeDatabase:
         """List accounts with stored snapshots, newest observation first."""
         with self._connection() as conn:
             rows = conn.execute(
-                """SELECT account_id, currency, MAX(captured_at) AS latest_snapshot_at,
-                          COUNT(*) AS snapshot_count
+                """SELECT account_id,
+                          (SELECT latest.currency FROM equity_snapshots AS latest
+                           WHERE latest.account_id = equity_snapshots.account_id
+                           ORDER BY latest.captured_at DESC LIMIT 1) AS currency,
+                          MAX(captured_at) AS latest_snapshot_at, COUNT(*) AS snapshot_count
                    FROM equity_snapshots
-                   GROUP BY account_id, currency
+                   GROUP BY account_id
                    ORDER BY latest_snapshot_at DESC, account_id ASC"""
             ).fetchall()
             return [dict(row) for row in rows]
+
     def get_equity_snapshots(
         self, account_id: str = "default", start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
