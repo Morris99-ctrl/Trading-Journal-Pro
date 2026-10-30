@@ -129,6 +129,17 @@ class PortfolioPerformanceTests(unittest.TestCase):
                 [self.flow(self.t0 + timedelta(hours=12), "deposit", 100, currency="KES")],
             )
 
+    def test_mixed_timezone_offsets_are_sorted_by_actual_time(self):
+        earlier = datetime.fromisoformat("2026-01-01T10:00:00+03:00")
+        later = datetime.fromisoformat("2026-01-01T08:30:00+00:00")
+        result = calculate_portfolio_performance([
+            self.snap(later, 1100),
+            self.snap(earlier, 1000),
+        ])
+        self.assertEqual(result["period_count"], 1)
+        self.assertAlmostEqual(result["periods"][0]["start_equity"], 1000)
+        self.assertAlmostEqual(result["periods"][0]["end_equity"], 1100)
+
 
 class PortfolioPersistenceTests(unittest.TestCase):
     def setUp(self):
@@ -164,6 +175,15 @@ class PortfolioPersistenceTests(unittest.TestCase):
         self.db.add_equity_snapshot(when, 1000, 1000, account_id="demo")
         with self.assertRaises(Exception):
             self.db.add_equity_snapshot(when, 1010, 1010, account_id="demo")
+
+    def test_snapshot_storage_normalizes_offsets_and_reads_chronologically(self):
+        later_utc = datetime.fromisoformat("2026-01-01T08:30:00+00:00")
+        earlier_local = datetime.fromisoformat("2026-01-01T10:00:00+03:00")
+        self.db.add_equity_snapshot(later_utc, 1100, 1100, account_id="demo")
+        self.db.add_equity_snapshot(earlier_local, 1000, 1000, account_id="demo")
+        snapshots = self.db.get_equity_snapshots("demo")
+        self.assertEqual([item["equity"] for item in snapshots], [1000, 1100])
+        self.assertEqual(snapshots[0]["captured_at"], "2026-01-01T07:00:00+00:00")
 
     def test_invalid_flow_is_rejected_before_database_write(self):
         with self.assertRaises(ValueError):
