@@ -452,7 +452,7 @@ def upload_screenshot(trade_id):
     signatures = {
         "png": header.startswith(b"\x89PNG\r\n\x1a\n"),
         "jpg": header.startswith(b"\xff\xd8\xff"),
-        "jpeg": header.startswith(b"\\xff\\xd8\\xff"),
+        "jpeg": header.startswith(b"\xff\xd8\xff"),
         "gif": header.startswith((b"GIF87a", b"GIF89a")),
         "webp": len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP",
     }
