@@ -409,6 +409,17 @@ class TradeDatabase:
             conn.commit()
             return int(cursor.lastrowid)
 
+    def get_equity_accounts(self) -> List[Dict[str, Any]]:
+        """List accounts with stored snapshots, newest observation first."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                """SELECT account_id, currency, MAX(captured_at) AS latest_snapshot_at,
+                          COUNT(*) AS snapshot_count
+                   FROM equity_snapshots
+                   GROUP BY account_id, currency
+                   ORDER BY latest_snapshot_at DESC, account_id ASC"""
+            ).fetchall()
+            return [dict(row) for row in rows]
     def get_equity_snapshots(
         self, account_id: str = "default", start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
