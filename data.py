@@ -9,11 +9,26 @@ import os
 import shutil
 import math
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import contextmanager
 from models import Trade, TradeType, TradeStatus, AssetClass
 from calculators import TradingCalculator
+
+
+def _utc_datetime(value):
+    """Normalize datetime or ISO timestamp to aware UTC for reliable ordering."""
+    parsed = datetime.fromisoformat(value) if isinstance(value, str) else value
+    if not isinstance(parsed, datetime):
+        raise ValueError("timestamp must be a datetime or ISO-8601 string")
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _utc_iso(value):
+    """Serialize timestamps consistently so SQLite string comparisons are safe."""
+    return _utc_datetime(value).isoformat()
 
 
 class TradeDatabase:
@@ -282,10 +297,10 @@ class TradeDatabase:
             params.append(asset_class.value)
         if start_date:
             query += f' AND {date_column} >= ?'
-            params.append(start_date.isoformat())
+            params.append(_utc_iso(start_date))
         if end_date:
             query += f' AND {date_column} <= ?'
-            params.append(end_date.isoformat())
+            params.append(_utc_iso(end_date))
 
         order_column = "entry_time" if date_basis == "entry" else "exit_time"
         query += f' ORDER BY {order_column} DESC'
@@ -403,7 +418,7 @@ class TradeDatabase:
                 """INSERT INTO equity_snapshots
                    (account_id, captured_at, balance, equity, currency, source, notes)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (account_id, captured_at.isoformat(), float(balance), float(equity),
+                (account_id, _utc_iso(captured_at), float(balance), float(equity),
                  currency.upper(), source, notes),
             )
             conn.commit()
@@ -438,7 +453,9 @@ class TradeDatabase:
             params.append(end_date.isoformat())
         query += " ORDER BY captured_at ASC"
         with self._connection() as conn:
-            return [dict(row) for row in conn.execute(query, params).fetchall()]
+            rows = [dict(row) for row in conn.execute(query, params).fetchall()]
+        # Legacy rows may contain mixed offsets; sort by actual UTC time.
+        return sorted(rows, key=lambda row: _utc_datetime(row["captured_at"]))
 
     def add_portfolio_cash_flow(
         self, occurred_at: datetime, flow_type: str, amount: float,
@@ -460,7 +477,7 @@ class TradeDatabase:
                 """INSERT INTO portfolio_cash_flows
                    (account_id, occurred_at, flow_type, amount, currency, notes)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (account_id, occurred_at.isoformat(), normalized_type, float(amount),
+                (account_id, _utc_iso(occurred_at), normalized_type, float(amount),
                  currency.upper(), notes),
             )
             conn.commit()
@@ -480,7 +497,8 @@ class TradeDatabase:
             params.append(end_date.isoformat())
         query += " ORDER BY occurred_at ASC, id ASC"
         with self._connection() as conn:
-            return [dict(row) for row in conn.execute(query, params).fetchall()]
+            rows = [dict(row) for row in conn.execute(query, params).fetchall()]
+        return sorted(rows, key=lambda row: (_utc_datetime(row["occurred_at"]), row["id"]))
 
     # Daily Log Operations
     def save_daily_log(
