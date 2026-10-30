@@ -59,6 +59,54 @@ class PortfolioAPITests(unittest.TestCase):
     def tearDown(self):
         self.web_app.service = self.original_service
 
+    def test_security_headers_and_api_cache_policy(self):
+        response = self.client.get("/api/portfolio/accounts")
+        self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
+        self.assertEqual(response.headers.get("Referrer-Policy"), "strict-origin-when-cross-origin")
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store")
+
+    def test_trade_creation_rejects_nonfinite_and_invalid_values_before_service_call(self):
+        for payload in (
+            {"symbol": "XAUUSD", "quantity": "NaN", "entry_price": 2000},
+            {"symbol": "XAUUSD", "quantity": 1, "entry_price": "Infinity"},
+            {"symbol": "XAUUSD", "quantity": 0, "entry_price": 2000},
+            {"symbol": "XAUUSD", "quantity": 1, "entry_price": 2000, "trade_type": "HOLD"},
+            {"symbol": "XAUUSD", "quantity": 1, "entry_price": 2000, "rating": 6},
+        ):
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/trades", json=payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.get_json()["success"])
+
+    def test_manual_snapshot_rejects_nonfinite_and_negative_equity(self):
+        for balance, equity in (("NaN", 100), (100, "Infinity"), (-1, 100)):
+            response = self.client.post("/api/portfolio/manual-snapshot", json={
+                "account_id": "bad-input", "currency": "KES",
+                "balance": balance, "equity": equity,
+            })
+            self.assertEqual(response.status_code, 400)
+            self.assertFalse(response.get_json()["success"])
+        self.assertEqual(self.fake_service.snapshots, [])
+
+    def test_non_object_json_is_rejected(self):
+        response = self.client.post(
+            "/api/trades", data='["not", "an", "object"]',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()["success"])
+
+    def test_upload_rejects_image_extension_with_non_image_content(self):
+        from io import BytesIO
+        response = self.client.post(
+            "/api/trades/unknown/upload-screenshot",
+            data={"image": (BytesIO(b"this is not a png"), "chart.png")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("content", response.get_json()["error"].lower())
+
     def test_manual_snapshot_is_namespaced_and_never_marked_as_mt5(self):
         response = self.client.post("/api/portfolio/manual-snapshot", json={
             "account_id": "my-account",
