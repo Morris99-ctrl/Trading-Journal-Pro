@@ -146,6 +146,10 @@ class PortfolioAPITests(unittest.TestCase):
             'id="portfolioDrawdown"',
             'submitManualEquitySnapshot(event)',
             'captureMT5Equity()',
+            'id="cashFlowType"',
+            'id="cashFlowAmount"',
+            'submitPortfolioCashFlow(event)',
+            'id="portfolioCashFlowsBody"',
         ):
             self.assertIn(expected, html)
 
@@ -173,6 +177,17 @@ class PortfolioAPITests(unittest.TestCase):
             self.assertEqual(flows[0]["amount"], 5000)
             self.assertEqual(flows[0]["currency"], "KES")
             self.assertEqual(flows[0]["notes"], "Monthly contribution")
+            real_service.record_equity_snapshot(
+                captured_at=datetime(2026, 10, 2, 9, tzinfo=timezone.utc),
+                balance=15000, equity=15000, account_id="manual:flow-test",
+                currency="KES", source="manual",
+            )
+            performance = self.client.get(
+                "/api/portfolio/performance?account_id=manual%3Aflow-test"
+            )
+            self.assertEqual(performance.status_code, 200)
+            self.assertEqual(len(performance.get_json()["data"]["cash_flows"]), 1)
+            self.assertAlmostEqual(performance.get_json()["data"]["total_return_pct"], 0.0, places=5)
             self.web_app.service = self.fake_service
 
     def test_manual_snapshot_persists_through_performance_endpoint(self):
