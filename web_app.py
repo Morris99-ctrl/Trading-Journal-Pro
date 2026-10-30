@@ -212,6 +212,69 @@ def mt5_sync():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/mt5/snapshot", methods=["POST"])
+def mt5_equity_snapshot():
+    """Capture the current broker-reported MT5 account balance and equity."""
+    try:
+        result = service.capture_mt5_equity_snapshot()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 503
+
+
+@app.route("/api/portfolio/accounts", methods=["GET"])
+def portfolio_accounts():
+    """List account IDs with stored equity snapshots."""
+    try:
+        return jsonify({"success": True, "data": service.get_portfolio_accounts()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/portfolio/performance", methods=["GET"])
+def portfolio_performance():
+    """Return account equity history and cash-flow-adjusted performance."""
+    try:
+        account_id = request.args.get("account_id")
+        if not account_id:
+            accounts = service.get_portfolio_accounts()
+            account_id = accounts[0]["account_id"] if accounts else "default"
+        result = service.get_portfolio_performance(account_id=account_id)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/api/portfolio/manual-snapshot", methods=["POST"])
+def manual_equity_snapshot():
+    """Record explicitly labelled user-entered equity; never mark it broker-verified."""
+    try:
+        data = request.get_json(silent=True) or {}
+        account_id = str(data.get("account_id", "manual-account")).strip()
+        currency = str(data.get("currency", "")).strip().upper()
+        if not account_id:
+            return jsonify({"success": False, "error": "Account label is required"}), 400
+        if not currency:
+            return jsonify({"success": False, "error": "Currency is required"}), 400
+        balance = float(data["balance"])
+        equity = float(data["equity"])
+        captured_at = datetime.now().astimezone()
+        snapshot_id = service.record_equity_snapshot(
+            captured_at=captured_at, balance=balance, equity=equity,
+            account_id=account_id, currency=currency, source="manual",
+            notes="Manually entered; not broker verified.",
+        )
+        return jsonify({
+            "success": True, "snapshot_id": snapshot_id, "account_id": account_id,
+            "captured_at": captured_at.isoformat(), "balance": balance,
+            "equity": equity, "currency": currency, "source": "manual",
+        })
+    except (KeyError, TypeError, ValueError) as e:
+        return jsonify({"success": False, "error": str(e) or "Balance and equity must be valid numbers"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/api/calc/position-size", methods=["POST"])
 def calc_position():
     """Calculate position sizing based on risk percentage"""
