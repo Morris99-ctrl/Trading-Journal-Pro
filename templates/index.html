@@ -797,6 +797,7 @@
                 json.data.forEach(account => {
                     const option = document.createElement('option');
                     option.value = account.account_id;
+                    option.dataset.currency = (account.currency || '').toUpperCase();
                     option.textContent = `${account.account_id} (${account.currency || 'currency n/a'})`;
                     select.appendChild(option);
                 });
@@ -814,6 +815,12 @@
                 return;
             }
             localStorage.setItem('portfolioAccountId', accountId);
+            const selectedOption = select.options[select.selectedIndex];
+            const accountCurrency = selectedOption ? selectedOption.dataset.currency : '';
+            const currencySelect = document.getElementById('cashFlowCurrency');
+            if (accountCurrency && [...currencySelect.options].some(option => option.value === accountCurrency)) {
+                currencySelect.value = accountCurrency;
+            }
             try {
                 const res = await fetch(`/api/portfolio/performance?account_id=${encodeURIComponent(accountId)}`);
                 const json = await res.json();
