@@ -29,6 +29,12 @@ class FakeWebService:
             "max_drawdown_pct": 0.5,
         }
 
+    def record_portfolio_cash_flow(self, **kwargs):
+        if not hasattr(self, "cash_flows"):
+            self.cash_flows = []
+        self.cash_flows.append(kwargs)
+        return len(self.cash_flows)
+
     def capture_mt5_equity_snapshot(self):
         return {
             "success": True, "account_id": "123@Broker-Demo",
@@ -87,6 +93,48 @@ class PortfolioAPITests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["source"], "mt5")
 
+    def test_cash_flow_requires_existing_account_and_matching_currency(self):
+        response = self.client.post("/api/portfolio/cash-flow", json={
+            "account_id": "missing-account", "flow_type": "deposit",
+            "amount": 100, "currency": "USD",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.get_json()["success"])
+
+        response = self.client.post("/api/portfolio/cash-flow", json={
+            "account_id": "123@Broker-Demo", "flow_type": "deposit",
+            "amount": 100, "currency": "KES",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Currency must match", response.get_json()["error"])
+
+    def test_cash_flow_rejects_invalid_type_and_amounts(self):
+        for payload in (
+            {"flow_type": "transfer", "amount": 100},
+            {"flow_type": "deposit", "amount": 0},
+            {"flow_type": "withdrawal", "amount": -1},
+            {"flow_type": "deposit", "amount": "NaN"},
+            {"flow_type": "deposit", "amount": "Infinity"},
+        ):
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/portfolio/cash-flow", json={
+                    "account_id": "123@Broker-Demo", "currency": "USD", **payload,
+                })
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.get_json()["success"])
+        self.assertFalse(getattr(self.fake_service, "cash_flows", []))
+
+    def test_cash_flow_records_deposit_and_withdrawal(self):
+        for flow_type in ("deposit", "withdrawal"):
+            response = self.client.post("/api/portfolio/cash-flow", json={
+                "account_id": "123@Broker-Demo", "flow_type": flow_type,
+                "amount": 250, "currency": "USD", "notes": "test flow",
+            })
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+            self.assertTrue(response.get_json()["success"])
+        self.assertEqual([flow["flow_type"] for flow in self.fake_service.cash_flows], ["deposit", "withdrawal"])
+        self.assertEqual(self.fake_service.cash_flows[0]["amount"], 250)
+
     def test_dashboard_renders_portfolio_controls(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
@@ -100,6 +148,32 @@ class PortfolioAPITests(unittest.TestCase):
             'captureMT5Equity()',
         ):
             self.assertIn(expected, html)
+
+    def test_cash_flow_persists_in_sqlite_for_selected_account(self):
+        from datetime import datetime, timezone
+        from services import TradeService
+
+        with tempfile.TemporaryDirectory(prefix="portfolio-flow-e2e-") as tmp:
+            real_service = TradeService(str(Path(tmp) / "journal.db"))
+            self.web_app.service = real_service
+            real_service.record_equity_snapshot(
+                captured_at=datetime(2026, 10, 1, 9, tzinfo=timezone.utc),
+                balance=10000, equity=10000, account_id="manual:flow-test",
+                currency="KES", source="manual",
+            )
+            response = self.client.post("/api/portfolio/cash-flow", json={
+                "account_id": "manual:flow-test", "flow_type": "deposit",
+                "amount": 5000, "currency": "KES",
+                "occurred_at": "2026-10-01T12:00:00+00:00", "notes": "Monthly contribution",
+            })
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+            flows = real_service.db.get_portfolio_cash_flows("manual:flow-test")
+            self.assertEqual(len(flows), 1)
+            self.assertEqual(flows[0]["flow_type"], "deposit")
+            self.assertEqual(flows[0]["amount"], 5000)
+            self.assertEqual(flows[0]["currency"], "KES")
+            self.assertEqual(flows[0]["notes"], "Monthly contribution")
+            self.web_app.service = self.fake_service
 
     def test_manual_snapshot_persists_through_performance_endpoint(self):
         # Exercise the actual SQLite-backed service across the full HTTP path.
