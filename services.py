@@ -185,8 +185,23 @@ class TradeService:
         result = calculate_portfolio_performance(snapshots, normalized_flows)
         result["account_id"] = account_id
         result["currency"] = next((item["currency"] for item in snapshots if item["currency"]), "")
+        result["equity_curve"] = [
+            {
+                "time": item["captured_at"], "balance": item["balance"],
+                "equity": item["equity"], "currency": item["currency"],
+                "source": item["source"],
+            }
+            for item in snapshots
+        ]
         return result
 
+    def get_portfolio_accounts(self) -> List[Dict[str, Any]]:
+        """List accounts with equity history."""
+        return self.db.get_equity_accounts()
+
+    def capture_mt5_equity_snapshot(self) -> Dict[str, Any]:
+        """Capture and persist one verified MT5 account equity observation."""
+        return self.mt5_sync.capture_account_snapshot(self)
     # MetaTrader 5 Sync Methods
     def get_mt5_status(self) -> Dict[str, Any]:
         """Get live MT5 connection status"""
