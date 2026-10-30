@@ -1,6 +1,7 @@
 """Flask API tests for account equity capture and manual fallback labels."""
 
 import importlib
+import importlib.util
 import unittest
 from unittest.mock import patch
 
@@ -33,6 +34,7 @@ class FakeWebService:
         }
 
 
+@unittest.skipUnless(importlib.util.find_spec("flask"), "Flask is an optional runtime dependency")
 class PortfolioAPITests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
