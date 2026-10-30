@@ -250,10 +250,12 @@ def manual_equity_snapshot():
     """Record explicitly labelled user-entered equity; never mark it broker-verified."""
     try:
         data = request.get_json(silent=True) or {}
-        account_id = str(data.get("account_id", "manual-account")).strip()
+        account_label = str(data.get("account_id", "manual-account")).strip()
         currency = str(data.get("currency", "")).strip().upper()
-        if not account_id:
+        if not account_label:
             return jsonify({"success": False, "error": "Account label is required"}), 400
+        # Namespace manual accounts so user-entered values cannot impersonate a broker account ID.
+        account_id = account_label if account_label.startswith("manual:") else f"manual:{account_label}"
         if not currency:
             return jsonify({"success": False, "error": "Currency is required"}), 400
         balance = float(data["balance"])
