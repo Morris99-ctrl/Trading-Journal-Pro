@@ -76,6 +76,44 @@ class MT5SyncService:
                 "message": f"Connection error: {str(e)}"
             }
 
+    def capture_account_snapshot(self, trade_service: TradeService, captured_at: Optional[datetime] = None) -> Dict[str, Any]:
+        """Capture broker-reported balance/equity and persist it as a verified snapshot."""
+        if not self.is_available():
+            raise RuntimeError("MetaTrader5 module is not installed.")
+
+        mt5 = self._mt5
+        if not mt5.initialize(timeout=5000):
+            err = mt5.last_error()
+            raise ConnectionError(f"Could not connect to MetaTrader 5: {err}")
+
+        try:
+            account = mt5.account_info()
+            if account is None:
+                raise ConnectionError(f"MT5 returned no account information: {mt5.last_error()}")
+
+            login = getattr(account, "login", None)
+            server = str(getattr(account, "server", "") or "").strip()
+            currency = str(getattr(account, "currency", "") or "").strip().upper()
+            if login is None or not server or not currency:
+                raise ValueError("MT5 account identity or account currency is incomplete.")
+
+            timestamp = captured_at or datetime.now().astimezone()
+            account_id = f"{login}@{server}"
+            balance = float(account.balance)
+            equity = float(account.equity)
+            snapshot_id = trade_service.record_equity_snapshot(
+                captured_at=timestamp, balance=balance, equity=equity,
+                account_id=account_id, currency=currency, source="mt5",
+                notes="Captured from MT5 account_info().",
+            )
+            return {
+                "success": True, "snapshot_id": snapshot_id, "account_id": account_id,
+                "captured_at": timestamp.isoformat(), "balance": balance,
+                "equity": equity, "currency": currency, "source": "mt5",
+            }
+        finally:
+            mt5.shutdown()
+
     @staticmethod
     def classify_asset_class(symbol: str) -> AssetClass:
         """Classify symbol into institutional asset class"""
