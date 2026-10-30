@@ -245,6 +245,62 @@ def portfolio_performance():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/api/portfolio/cash-flow", methods=["POST"])
+def portfolio_cash_flow():
+    """Record a deposit or withdrawal for an existing portfolio account."""
+    try:
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "A JSON object is required"}), 400
+
+        account_id = str(data.get("account_id", "")).strip()
+        flow_type = str(data.get("flow_type", "")).strip().lower()
+        currency = str(data.get("currency", "")).strip().upper()
+        notes = str(data.get("notes", "")).strip()
+        if not account_id:
+            return jsonify({"success": False, "error": "Account is required"}), 400
+        if flow_type not in ("deposit", "withdrawal"):
+            return jsonify({"success": False, "error": "Flow type must be deposit or withdrawal"}), 400
+        if not currency:
+            return jsonify({"success": False, "error": "Currency is required"}), 400
+        if len(notes) > 500:
+            return jsonify({"success": False, "error": "Notes must be 500 characters or fewer"}), 400
+
+        accounts = service.get_portfolio_accounts()
+        account = next((item for item in accounts if item.get("account_id") == account_id), None)
+        if account is None:
+            return jsonify({"success": False, "error": "Select an existing portfolio account"}), 400
+        account_currency = str(account.get("currency") or "").strip().upper()
+        if account_currency and currency != account_currency:
+            return jsonify({"success": False, "error": f"Currency must match the account currency ({account_currency})"}), 400
+
+        amount = float(data.get("amount"))
+        if not __import__("math").isfinite(amount) or amount <= 0:
+            return jsonify({"success": False, "error": "Amount must be a finite number greater than zero"}), 400
+
+        occurred_raw = data.get("occurred_at")
+        if occurred_raw:
+            occurred_at = datetime.fromisoformat(str(occurred_raw))
+            if occurred_at.tzinfo is None:
+                occurred_at = occurred_at.astimezone()
+        else:
+            occurred_at = datetime.now().astimezone()
+
+        flow_id = service.record_portfolio_cash_flow(
+            occurred_at=occurred_at, flow_type=flow_type, amount=amount,
+            account_id=account_id, currency=currency, notes=notes,
+        )
+        return jsonify({
+            "success": True, "flow_id": flow_id, "account_id": account_id,
+            "flow_type": flow_type, "amount": amount, "currency": currency,
+            "occurred_at": occurred_at.isoformat(), "notes": notes,
+        })
+    except (TypeError, ValueError, OverflowError) as e:
+        return jsonify({"success": False, "error": str(e) or "Invalid cash-flow details"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/api/portfolio/manual-snapshot", methods=["POST"])
 def manual_equity_snapshot():
     """Record explicitly labelled user-entered equity; never mark it broker-verified."""
