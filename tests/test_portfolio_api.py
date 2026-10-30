@@ -1,6 +1,8 @@
 """Flask API tests for account equity capture and manual fallback labels."""
 
 import importlib
+import tempfile
+from pathlib import Path
 import importlib.util
 import unittest
 from unittest.mock import patch
@@ -84,6 +86,58 @@ class PortfolioAPITests(unittest.TestCase):
         response = self.client.post("/api/mt5/snapshot")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["source"], "mt5")
+
+    def test_dashboard_renders_portfolio_controls(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        for expected in (
+            'id="portfolioAccountSelect"',
+            'id="portfolioEquityChart"',
+            'id="portfolioReturn"',
+            'id="portfolioDrawdown"',
+            'submitManualEquitySnapshot(event)',
+            'captureMT5Equity()',
+        ):
+            self.assertIn(expected, html)
+
+    def test_manual_snapshot_persists_through_performance_endpoint(self):
+        # Exercise the actual SQLite-backed service across the full HTTP path.
+        from services import TradeService
+
+        with tempfile.TemporaryDirectory(prefix="portfolio-api-e2e-") as tmp:
+            real_service = TradeService(str(Path(tmp) / "journal.db"))
+            self.web_app.service = real_service
+            first = self.client.post("/api/portfolio/manual-snapshot", json={
+                "account_id": "integration-test",
+                "currency": "KES",
+                "balance": 10000,
+                "equity": 10000,
+            })
+            self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+
+            second = self.client.post("/api/portfolio/manual-snapshot", json={
+                "account_id": "integration-test",
+                "currency": "KES",
+                "balance": 10000,
+                "equity": 10500,
+            })
+            self.assertEqual(second.status_code, 200, second.get_data(as_text=True))
+
+            accounts = self.client.get("/api/portfolio/accounts")
+            self.assertEqual(accounts.status_code, 200)
+            self.assertEqual(accounts.get_json()["data"][0]["account_id"], "manual:integration-test")
+
+            performance = self.client.get(
+                "/api/portfolio/performance?account_id=manual%3Aintegration-test"
+            )
+            self.assertEqual(performance.status_code, 200)
+            payload = performance.get_json()["data"]
+            self.assertEqual(payload["snapshot_count"], 2)
+            self.assertEqual(len(payload["equity_curve"]), 2)
+            self.assertEqual(payload["equity_curve"][-1]["equity"], 10500)
+            self.assertIsNotNone(payload["total_return_pct"])
+            self.web_app.service = self.fake_service
 
 
 if __name__ == "__main__":
