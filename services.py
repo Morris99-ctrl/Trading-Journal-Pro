@@ -185,6 +185,11 @@ class TradeService:
         result = calculate_portfolio_performance(snapshots, normalized_flows)
         result["account_id"] = account_id
         result["currency"] = next((item["currency"] for item in snapshots if item["currency"]), "")
+        result["cash_flows"] = [
+            {"id": flow["id"], "occurred_at": flow["occurred_at"], "flow_type": flow["flow_type"],
+             "amount": flow["amount"], "currency": flow["currency"], "notes": flow["notes"]}
+            for flow in reversed(flows[-20:])
+        ]
         result["equity_curve"] = [
             {
                 "time": item["captured_at"], "balance": item["balance"],
