@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from data import TradeDatabase
-from models import Trade, TradeStatus, TradeType
+from models import AssetClass, Trade, TradeStatus, TradeType
 from mt5_service import MT5SyncService
 
 
@@ -253,6 +253,14 @@ class BrokerPnLPersistenceTests(unittest.TestCase):
             status=TradeStatus.CLOSED, position_id="889", broker_net_pnl=42.5,
         )
         self.assertEqual(TradingCalculator.calculate_realized_pnl(trade), 42.5)
+
+
+class MT5SymbolClassificationTests(unittest.TestCase):
+    def test_us100_is_classified_as_an_index(self):
+        self.assertEqual(
+            MT5SyncService.classify_asset_class("US100"),
+            AssetClass.INDICES,
+        )
 
 
 if __name__ == "__main__":
