@@ -9,7 +9,7 @@ from scripts.capture_scheduled_snapshot import _masked_account_id, capture_once
 class ScheduledSnapshotCommandTests(unittest.TestCase):
     def test_account_login_is_masked_in_command_output(self):
         self.assertEqual(_masked_account_id("12345678@Demo-Server"), "****5678@Demo-Server")
-        self.assertEqual(_masked_account_id("12@Demo-Server"), "****12@Demo-Server")
+        self.assertEqual(_masked_account_id("12@Demo-Server"), "****@Demo-Server")
         self.assertEqual(_masked_account_id(None), "unavailable")
 
     def test_capture_once_reports_snapshot_without_exposing_full_login(self):
