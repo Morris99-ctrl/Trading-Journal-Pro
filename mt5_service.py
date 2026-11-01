@@ -120,7 +120,7 @@ class MT5SyncService:
         s = symbol.upper()
         if any(m in s for m in ["XAU", "XAG", "GOLD", "SILVER", "OIL", "WTI", "BRENT", "NATGAS"]):
             return AssetClass.COMMODITIES
-        if any(idx in s for idx in ["US30", "NAS100", "SPX500", "GER40", "UK100", "DJ30", "NDX", "DAX", "WS30", "USTEC"]):
+        if any(idx in s for idx in ["US30", "US100", "NAS100", "SPX500", "GER40", "UK100", "DJ30", "NDX", "DAX", "WS30", "USTEC"]):
             return AssetClass.INDICES
         if any(c in s for c in ["BTC", "ETH", "SOL", "XRP", "DOGE", "USDT"]):
             return AssetClass.CRYPTO
