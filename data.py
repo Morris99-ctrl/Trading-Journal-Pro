@@ -7,12 +7,28 @@ import sqlite3
 import csv
 import os
 import shutil
+import math
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import contextmanager
 from models import Trade, TradeType, TradeStatus, AssetClass
 from calculators import TradingCalculator
+
+
+def _utc_datetime(value):
+    """Normalize datetime or ISO timestamp to aware UTC for reliable ordering."""
+    parsed = datetime.fromisoformat(value) if isinstance(value, str) else value
+    if not isinstance(parsed, datetime):
+        raise ValueError("timestamp must be a datetime or ISO-8601 string")
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _utc_iso(value):
+    """Serialize timestamps consistently so SQLite string comparisons are safe."""
+    return _utc_datetime(value).isoformat()
 
 
 class TradeDatabase:
@@ -60,6 +76,8 @@ class TradeDatabase:
                     session TEXT DEFAULT 'NY',
                     position_id TEXT,
                     notes TEXT,
+                    broker_gross_pnl REAL,
+                    broker_net_pnl REAL,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
@@ -78,6 +96,34 @@ class TradeDatabase:
                 )
             ''')
 
+            # Account-level snapshots and external cash flows for portfolio analytics.
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS equity_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id TEXT NOT NULL DEFAULT 'default',
+                    captured_at TEXT NOT NULL,
+                    balance REAL NOT NULL,
+                    equity REAL NOT NULL,
+                    currency TEXT NOT NULL DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(account_id, captured_at)
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS portfolio_cash_flows (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id TEXT NOT NULL DEFAULT 'default',
+                    occurred_at TEXT NOT NULL,
+                    flow_type TEXT NOT NULL CHECK(flow_type IN ('deposit', 'withdrawal')),
+                    amount REAL NOT NULL CHECK(amount > 0),
+                    currency TEXT NOT NULL DEFAULT '',
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             # Ensure columns exist in case of legacy tables
             cursor.execute("PRAGMA table_info(trades)")
             columns = {col["name"] for col in cursor.fetchall()}
@@ -92,7 +138,9 @@ class TradeDatabase:
                 "tags": "ALTER TABLE trades ADD COLUMN tags TEXT DEFAULT ''",
                 "screenshot_path": "ALTER TABLE trades ADD COLUMN screenshot_path TEXT",
                 "session": "ALTER TABLE trades ADD COLUMN session TEXT DEFAULT 'NY'",
-                "position_id": "ALTER TABLE trades ADD COLUMN position_id TEXT"
+                "position_id": "ALTER TABLE trades ADD COLUMN position_id TEXT",
+                "broker_gross_pnl": "ALTER TABLE trades ADD COLUMN broker_gross_pnl REAL",
+                "broker_net_pnl": "ALTER TABLE trades ADD COLUMN broker_net_pnl REAL"
             }
 
             for col_name, sql in migrations.items():
@@ -159,8 +207,8 @@ class TradeDatabase:
                 id, symbol, trade_type, asset_class, quantity, entry_price,
                 exit_price, stop_loss, take_profit, commission, swap, entry_time,
                 exit_time, status, setup, rating, discipline_rating, tags,
-                screenshot_path, session, position_id, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                screenshot_path, session, position_id, notes, broker_gross_pnl, broker_net_pnl
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         with self._connection() as conn:
             cursor = conn.cursor()
@@ -187,7 +235,9 @@ class TradeDatabase:
                     trade.screenshot_path,
                     trade.session,
                     trade.position_id,
-                    trade.notes
+                    trade.notes,
+                    trade.broker_gross_pnl,
+                    trade.broker_net_pnl
                 ))
                 conn.commit()
                 return True
@@ -221,9 +271,18 @@ class TradeDatabase:
         symbol: Optional[str] = None,
         asset_class: Optional[AssetClass] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        date_basis: str = "entry"
     ) -> List[Trade]:
-        """Fetch trades with optional filtering, ordered chronologically descending"""
+        """Fetch trades with optional filters.
+
+        date_basis='entry' filters by entry_time (trade-cohort view).
+        date_basis='exit' filters by exit_time (realized-performance view).
+        """
+        if date_basis not in ("entry", "exit"):
+            raise ValueError("date_basis must be 'entry' or 'exit'")
+
+        date_column = "entry_time" if date_basis == "entry" else "exit_time"
         query = 'SELECT * FROM trades WHERE 1=1'
         params: List[Any] = []
 
@@ -237,13 +296,14 @@ class TradeDatabase:
             query += ' AND asset_class = ?'
             params.append(asset_class.value)
         if start_date:
-            query += ' AND entry_time >= ?'
+            query += f' AND {date_column} >= ?'
             params.append(start_date.isoformat())
         if end_date:
-            query += ' AND entry_time <= ?'
+            query += f' AND {date_column} <= ?'
             params.append(end_date.isoformat())
 
-        query += ' ORDER BY entry_time DESC'
+        order_column = "entry_time" if date_basis == "entry" else "exit_time"
+        query += f' ORDER BY {order_column} DESC'
 
         with self._connection() as conn:
             cursor = conn.cursor()
@@ -276,6 +336,8 @@ class TradeDatabase:
                 session = ?,
                 position_id = ?,
                 notes = ?,
+                broker_gross_pnl = ?,
+                broker_net_pnl = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         '''
@@ -304,6 +366,8 @@ class TradeDatabase:
                     trade.session,
                     trade.position_id,
                     trade.notes,
+                    trade.broker_gross_pnl,
+                    trade.broker_net_pnl,
                     trade.id
                 ))
                 conn.commit()
@@ -327,6 +391,114 @@ class TradeDatabase:
             cursor.execute('DELETE FROM trades')
             conn.commit()
             return True
+
+    # Portfolio equity snapshot and external cash-flow operations
+    def add_equity_snapshot(
+        self,
+        captured_at: datetime,
+        balance: float,
+        equity: float,
+        account_id: str = "default",
+        currency: str = "",
+        source: str = "manual",
+        notes: str = "",
+    ) -> int:
+        """Persist an actual account snapshot; duplicate account/timestamp pairs are rejected."""
+        if not account_id.strip():
+            raise ValueError("account_id must not be empty")
+        if not isinstance(captured_at, datetime):
+            raise ValueError("captured_at must be a datetime")
+        if not all(math.isfinite(float(value)) for value in (balance, equity)):
+            raise ValueError("balance and equity must be finite numbers")
+        if balance < 0 or equity < 0:
+            raise ValueError("balance and equity cannot be negative")
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO equity_snapshots
+                   (account_id, captured_at, balance, equity, currency, source, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (account_id, _utc_iso(captured_at), float(balance), float(equity),
+                 currency.upper(), source, notes),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def get_equity_accounts(self) -> List[Dict[str, Any]]:
+        """List accounts with stored snapshots, newest observation first."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                """SELECT account_id,
+                          (SELECT latest.currency FROM equity_snapshots AS latest
+                           WHERE latest.account_id = equity_snapshots.account_id
+                           ORDER BY latest.captured_at DESC LIMIT 1) AS currency,
+                          MAX(captured_at) AS latest_snapshot_at, COUNT(*) AS snapshot_count
+                   FROM equity_snapshots
+                   GROUP BY account_id
+                   ORDER BY latest_snapshot_at DESC, account_id ASC"""
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_equity_snapshots(
+        self, account_id: str = "default", start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM equity_snapshots WHERE account_id = ?"
+        params: List[Any] = [account_id]
+        if start_date:
+            query += " AND captured_at >= ?"
+            params.append(_utc_iso(start_date))
+        if end_date:
+            query += " AND captured_at <= ?"
+            params.append(_utc_iso(end_date))
+        query += " ORDER BY captured_at ASC"
+        with self._connection() as conn:
+            rows = [dict(row) for row in conn.execute(query, params).fetchall()]
+        # Legacy rows may contain mixed offsets; sort by actual UTC time.
+        return sorted(rows, key=lambda row: _utc_datetime(row["captured_at"]))
+
+    def add_portfolio_cash_flow(
+        self, occurred_at: datetime, flow_type: str, amount: float,
+        account_id: str = "default", currency: str = "", notes: str = "",
+    ) -> int:
+        """Record positive-magnitude deposit/withdrawal; type determines sign in analytics."""
+        normalized_type = flow_type.strip().lower()
+        if normalized_type not in ("deposit", "withdrawal"):
+            raise ValueError("flow_type must be 'deposit' or 'withdrawal'")
+        if not isinstance(occurred_at, datetime):
+            raise ValueError("occurred_at must be a datetime")
+        if not __import__("math").isfinite(float(amount)) or amount <= 0:
+            raise ValueError("amount must be a finite number greater than zero")
+        if not account_id.strip():
+            raise ValueError("account_id must not be empty")
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO portfolio_cash_flows
+                   (account_id, occurred_at, flow_type, amount, currency, notes)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (account_id, _utc_iso(occurred_at), normalized_type, float(amount),
+                 currency.upper(), notes),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def get_portfolio_cash_flows(
+        self, account_id: str = "default", start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM portfolio_cash_flows WHERE account_id = ?"
+        params: List[Any] = [account_id]
+        if start_date:
+            query += " AND occurred_at >= ?"
+            params.append(_utc_iso(start_date))
+        if end_date:
+            query += " AND occurred_at <= ?"
+            params.append(_utc_iso(end_date))
+        query += " ORDER BY occurred_at ASC, id ASC"
+        with self._connection() as conn:
+            rows = [dict(row) for row in conn.execute(query, params).fetchall()]
+        return sorted(rows, key=lambda row: (_utc_datetime(row["occurred_at"]), row["id"]))
 
     # Daily Log Operations
     def save_daily_log(
@@ -395,7 +567,7 @@ class TradeDatabase:
             "entry_price", "exit_price", "stop_loss", "take_profit",
             "commission", "swap", "entry_time", "exit_time", "status",
             "setup", "rating", "discipline_rating", "tags", "session",
-            "position_id", "notes", "net_pnl", "gross_pnl", "return_pct", "r_multiple"
+            "position_id", "notes", "broker_gross_pnl", "broker_net_pnl", "net_pnl", "gross_pnl", "return_pct", "r_multiple"
         ]
 
         with open(path, "w", newline="", encoding="utf-8") as f:
@@ -442,7 +614,9 @@ class TradeDatabase:
                         tags=row.get("tags", ""),
                         session=row.get("session", "NY"),
                         position_id=row.get("position_id"),
-                        notes=row.get("notes", "")
+                        notes=row.get("notes", ""),
+                        broker_gross_pnl=float(row["broker_gross_pnl"]) if row.get("broker_gross_pnl") else None,
+                        broker_net_pnl=float(row["broker_net_pnl"]) if row.get("broker_net_pnl") else None
                     )
                     existing = self.get_trade(trade.id)
                     if existing:
@@ -498,5 +672,7 @@ class TradeDatabase:
             screenshot_path=row["screenshot_path"] if "screenshot_path" in keys else None,
             session=row["session"] if ("session" in keys and row["session"]) else "NY",
             position_id=str(row["position_id"]) if ("position_id" in keys and row["position_id"]) else None,
-            notes=row["notes"] or ""
+            notes=row["notes"] or "",
+            broker_gross_pnl=float(row["broker_gross_pnl"]) if "broker_gross_pnl" in keys and row["broker_gross_pnl"] is not None else None,
+            broker_net_pnl=float(row["broker_net_pnl"]) if "broker_net_pnl" in keys and row["broker_net_pnl"] is not None else None
         )

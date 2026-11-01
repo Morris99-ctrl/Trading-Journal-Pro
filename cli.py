@@ -4,6 +4,7 @@ Trading Journal CLI
 Professional Command-Line Interface for trade tracking, analytics, and risk management.
 """
 
+import os
 import sys
 from typing import Optional
 from datetime import datetime, timedelta
@@ -91,8 +92,11 @@ class TradingJournalCLI:
                         count = self.service.import_csv(arg)
                         print(f"Successfully imported {count} trades from {arg}")
                 elif cmd == "sample":
-                    self.service.seed_sample_data(clear_first=False)
-                    print("Sample trades seeded successfully!")
+                    if self.service.get_all_trades():
+                        print("Sample data not loaded: use an empty journal to avoid mixing demo and real trades.")
+                    else:
+                        self.service.seed_sample_data(clear_first=False)
+                        print("Sample trades seeded successfully!")
                 elif cmd == "clear":
                     confirm = input("Are you sure you want to delete ALL trades? (y/N): ").strip().lower()
                     if confirm == 'y':
@@ -337,14 +341,15 @@ Commands:
 
 def main():
     service = TradeService("trading_journal.db")
-    if len(service.get_all_trades()) == 0:
-        print("Initializing journal with sample trades...")
-        service.seed_sample_data()
+    if "--demo" in sys.argv[1:]:
+        if service.get_all_trades():
+            print("Demo data not loaded: the journal already contains trades.")
+        else:
+            print("Loading sample trades for demo use...")
+            service.seed_sample_data()
     cli = TradingJournalCLI(service)
     cli.run()
 
 
 if __name__ == "__main__":
-    main()
-
     main()

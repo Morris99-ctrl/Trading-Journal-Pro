@@ -224,6 +224,99 @@
             </div>
         </section>
 
+        <!-- Account Equity & Cash-Flow-Adjusted Risk -->
+        <section class="bg-cardDark border border-borderDark rounded-xl p-5 shadow-sm space-y-5">
+            <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+                <div>
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                        <i class="fa-solid fa-scale-balanced text-accentGold"></i> Account Equity & Portfolio Risk
+                    </h2>
+                    <p class="text-xs text-gray-400 mt-1">Broker snapshots where available. Cash-flow-adjusted returns use Modified Dietz and are approximate.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="captureMT5Equity()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">Capture MT5 Equity</button>
+                    <select id="portfolioAccountSelect" onchange="loadPortfolioAnalytics()" class="bg-gray-800 border border-borderDark rounded-lg px-3 py-2 text-xs text-white max-w-full">
+                        <option value="">Select account</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="bg-gray-800/60 border border-borderDark rounded-lg p-3">
+                    <span class="block text-[11px] uppercase text-gray-400">Cash-flow-adjusted return</span>
+                    <strong id="portfolioReturn" class="block text-xl text-white mt-1">--</strong>
+                </div>
+                <div class="bg-gray-800/60 border border-borderDark rounded-lg p-3">
+                    <span class="block text-[11px] uppercase text-gray-400">Flow-neutral max drawdown</span>
+                    <strong id="portfolioDrawdown" class="block text-xl text-accentRed mt-1">--</strong>
+                </div>
+                <div class="bg-gray-800/60 border border-borderDark rounded-lg p-3">
+                    <span class="block text-[11px] uppercase text-gray-400">Latest account equity</span>
+                    <strong id="portfolioEquity" class="block text-xl text-white mt-1">--</strong>
+                    <span id="portfolioSnapshotMeta" class="block text-[11px] text-gray-500 mt-1">No snapshots recorded</span>
+                </div>
+            </div>
+            <div id="portfolioAnalyticsMessage" class="text-xs text-gray-400">Capture an MT5 snapshot or enter a manual observation to begin.</div>
+            <div id="portfolioEquityChart" class="w-full h-[280px]"></div>
+            <details class="border border-borderDark rounded-lg p-4">
+                <summary class="cursor-pointer text-sm font-semibold text-gray-200">Manual snapshot fallback</summary>
+                <p class="text-xs text-amber-300 mt-2 mb-3">Manual entries are explicitly labelled and are not broker-verified. Use the same account label and currency for each observation.</p>
+                <form onsubmit="submitManualEquitySnapshot(event)" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                    <input id="manualAccountId" value="manual-account" required maxlength="120" placeholder="Account label" class="bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                    <select id="manualCurrency" required class="bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                        <option value="USD">USD</option><option value="KES">KES</option><option value="EUR">EUR</option><option value="GBP">GBP</option>
+                    </select>
+                    <input id="manualBalance" type="number" min="0" step="any" required placeholder="Balance" class="bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                    <input id="manualEquity" type="number" min="0" step="any" required placeholder="Equity" class="bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                    <button type="submit" class="px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold">Save Manual Snapshot</button>
+                </form>
+            </details>
+            <details class="border border-borderDark rounded-lg p-4" open>
+                <summary class="cursor-pointer text-sm font-semibold text-gray-200">Record a deposit or withdrawal</summary>
+                <p class="text-xs text-gray-400 mt-2 mb-3">Cash flows are tracked separately from trading profit. Choose an existing account and use its currency.</p>
+                <form onsubmit="submitPortfolioCashFlow(event)" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div>
+                        <label for="cashFlowType" class="block text-xs text-gray-400 mb-1">Transaction</label>
+                        <select id="cashFlowType" required class="w-full bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                            <option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="cashFlowAmount" class="block text-xs text-gray-400 mb-1">Amount</label>
+                        <input id="cashFlowAmount" type="number" min="0.01" step="any" required placeholder="e.g. 5000" class="w-full bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                    </div>
+                    <div>
+                        <label for="cashFlowCurrency" class="block text-xs text-gray-400 mb-1">Currency</label>
+                        <select id="cashFlowCurrency" required class="w-full bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                            <option value="USD">USD</option><option value="KES">KES</option><option value="EUR">EUR</option><option value="GBP">GBP</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="cashFlowDate" class="block text-xs text-gray-400 mb-1">Date and time (optional)</label>
+                        <input id="cashFlowDate" type="datetime-local" class="w-full bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label for="cashFlowNotes" class="block text-xs text-gray-400 mb-1">Notes (optional)</label>
+                        <input id="cashFlowNotes" maxlength="500" placeholder="Reason or reference" class="w-full bg-gray-800 border border-borderDark rounded-lg p-2 text-sm text-white">
+                    </div>
+                    <div class="sm:col-span-2 xl:col-span-3">
+                        <button type="submit" class="px-4 py-2 rounded-lg bg-accentBlue hover:bg-blue-600 text-white text-xs font-bold">Save Cash Flow</button>
+                    </div>
+                </form>
+            </details>
+            <div class="space-y-2">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-gray-300">Recent Deposits & Withdrawals</h3>
+                <div class="overflow-x-auto border border-borderDark rounded-lg">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-gray-800/70 text-gray-400 uppercase">
+                            <tr><th class="p-3">Date</th><th class="p-3">Type</th><th class="p-3">Amount</th><th class="p-3">Notes</th></tr>
+                        </thead>
+                        <tbody id="portfolioCashFlowsBody" class="divide-y divide-borderDark">
+                            <tr><td colspan="4" class="p-3 text-gray-500">No cash flows recorded for this account.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
         <!-- SECONDARY CHARTS: Strategy Attribution & Daily P&L Bars -->
         <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- 3. Setup / Strategy Profitability Bar Chart -->
@@ -550,6 +643,7 @@
         let allTrades = [];
         let currentFilter = 'ALL';
         let equityChart = null;
+        let portfolioEquityChart = null;
         let winLossChart = null;
         let setupChart = null;
         let dailyPnlChart = null;
@@ -560,6 +654,7 @@
             checkMT5Status();
             loadStats();
             loadTrades();
+            loadPortfolioAccounts();
             calculateRisk();
             document.getElementById("dailyDate").value = new Date().toISOString().split('T')[0];
             runSplashSequence();
@@ -613,6 +708,22 @@
             equityChart = new ApexCharts(document.querySelector("#equityChart"), equityOptions);
             equityChart.render();
 
+            // Account equity snapshots: actual balance/equity, not reconstructed from trades.
+            const portfolioEquityOptions = {
+                chart: { type: 'area', height: 280, background: 'transparent', toolbar: { show: true }, animations: { enabled: true } },
+                theme: { mode: 'dark' },
+                stroke: { curve: 'straight', width: 2 },
+                fill: { type: 'gradient', gradient: { opacityFrom: 0.3, opacityTo: 0.03, stops: [0, 100] } },
+                grid: { borderColor: '#30363d', strokeDashArray: 3 },
+                dataLabels: { enabled: false },
+                xaxis: { type: 'datetime', labels: { style: { colors: '#8b949e', fontSize: '11px' } } },
+                yaxis: { labels: { formatter: val => val.toLocaleString(), style: { colors: '#8b949e', fontSize: '11px' } } },
+                tooltip: { x: { format: 'dd MMM yyyy HH:mm' }, y: { formatter: val => val.toLocaleString() } },
+                noData: { text: 'No account snapshots yet' },
+                series: [{ name: 'Account Equity', data: [] }]
+            };
+            portfolioEquityChart = new ApexCharts(document.querySelector('#portfolioEquityChart'), portfolioEquityOptions);
+            portfolioEquityChart.render();
             // 2. Win / Loss Donut Chart
             const winLossOptions = {
                 chart: { type: 'donut', height: 240, background: 'transparent' },
@@ -675,6 +786,151 @@
             }
         }
 
+        async function loadPortfolioAccounts(preferredAccountId = null) {
+            try {
+                const res = await fetch('/api/portfolio/accounts');
+                const json = await res.json();
+                if (!json.success) return;
+                const select = document.getElementById('portfolioAccountSelect');
+                const current = preferredAccountId || select.value || localStorage.getItem('portfolioAccountId') || '';
+                select.innerHTML = '<option value="">Select account</option>';
+                json.data.forEach(account => {
+                    const option = document.createElement('option');
+                    option.value = account.account_id;
+                    option.dataset.currency = (account.currency || '').toUpperCase();
+                    option.textContent = `${account.account_id} (${account.currency || 'currency n/a'})`;
+                    select.appendChild(option);
+                });
+                if (current && [...select.options].some(option => option.value === current)) select.value = current;
+                else if (json.data.length) select.value = json.data[0].account_id;
+                if (select.value) { localStorage.setItem('portfolioAccountId', select.value); await loadPortfolioAnalytics(); }
+            } catch (e) { console.error('Failed to load portfolio accounts', e); }
+        }
+
+        async function loadPortfolioAnalytics() {
+            const select = document.getElementById('portfolioAccountSelect');
+            const accountId = select.value;
+            if (!accountId) {
+                document.getElementById('portfolioAnalyticsMessage').innerText = 'Capture an MT5 snapshot or enter a manual observation to begin.';
+                return;
+            }
+            localStorage.setItem('portfolioAccountId', accountId);
+            const selectedOption = select.options[select.selectedIndex];
+            const accountCurrency = selectedOption ? selectedOption.dataset.currency : '';
+            const currencySelect = document.getElementById('cashFlowCurrency');
+            if (accountCurrency && [...currencySelect.options].some(option => option.value === accountCurrency)) {
+                currencySelect.value = accountCurrency;
+            }
+            try {
+                const res = await fetch(`/api/portfolio/performance?account_id=${encodeURIComponent(accountId)}`);
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error || 'Could not load portfolio analytics');
+                const d = json.data;
+                renderPortfolioCashFlows(d.cash_flows || []);
+                document.getElementById('portfolioReturn').innerText = d.total_return_pct === null ? '--' : `${d.total_return_pct.toFixed(2)}%`;
+                document.getElementById('portfolioDrawdown').innerText = d.max_drawdown_pct === null ? '--' : `${d.max_drawdown_pct.toFixed(2)}%`;
+                const points = (d.equity_curve || []).map(p => [new Date(p.time).getTime(), p.equity]);
+                await portfolioEquityChart.updateSeries([{ name: 'Account Equity', data: points }]);
+                const last = (d.equity_curve || []).slice(-1)[0];
+                document.getElementById('portfolioEquity').innerText = last ? `${last.equity.toLocaleString()} ${last.currency || d.currency || ''}` : '--';
+                document.getElementById('portfolioSnapshotMeta').innerText = last ? `${d.snapshot_count} snapshots · Latest source: ${last.source || 'unknown'} · ${new Date(last.time).toLocaleString()}` : 'No snapshots recorded';
+                document.getElementById('portfolioAnalyticsMessage').innerText = d.message || d.risk_metrics_status || (d.method ? `${d.method}. Drawdown is based on the compounded, cash-flow-adjusted return index.` : 'Record at least two snapshots to calculate performance and drawdown.');
+            } catch (e) { document.getElementById('portfolioAnalyticsMessage').innerText = e.message; }
+        }
+
+        async function captureMT5Equity() {
+            showToast('Capturing broker account equity...', 'info');
+            try {
+                const res = await fetch('/api/mt5/snapshot', { method: 'POST' });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error || 'MT5 snapshot failed');
+                showToast(`MT5 equity captured: ${json.equity.toLocaleString()} ${json.currency}`, 'success');
+                await loadPortfolioAccounts(json.account_id);
+                checkMT5Status();
+            } catch (e) { showToast(`MT5 snapshot failed: ${e.message}`, 'error'); }
+        }
+
+        function renderPortfolioCashFlows(flows) {
+            const tbody = document.getElementById('portfolioCashFlowsBody');
+            tbody.replaceChildren();
+            if (!flows.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 4;
+                cell.className = 'p-3 text-gray-500';
+                cell.textContent = 'No cash flows recorded for this account.';
+                row.appendChild(cell);
+                tbody.appendChild(row);
+                return;
+            }
+            flows.forEach(flow => {
+                const row = document.createElement('tr');
+                const values = [
+                    new Date(flow.occurred_at).toLocaleString(),
+                    flow.flow_type.charAt(0).toUpperCase() + flow.flow_type.slice(1),
+                    `${Number(flow.amount).toLocaleString()} ${flow.currency || ''}`,
+                    flow.notes || '—'
+                ];
+                values.forEach((value, index) => {
+                    const cell = document.createElement('td');
+                    cell.className = 'p-3 text-gray-300';
+                    cell.textContent = value;
+                    if (index === 1) cell.classList.add(flow.flow_type === 'deposit' ? 'text-accentGreen' : 'text-accentRed');
+                    row.appendChild(cell);
+                });
+                tbody.appendChild(row);
+            });
+        }
+
+        async function submitPortfolioCashFlow(event) {
+            event.preventDefault();
+            const accountId = document.getElementById('portfolioAccountSelect').value;
+            if (!accountId) {
+                showToast('Select an existing portfolio account first.', 'error');
+                return;
+            }
+            const payload = {
+                account_id: accountId,
+                flow_type: document.getElementById('cashFlowType').value,
+                amount: Number(document.getElementById('cashFlowAmount').value),
+                currency: document.getElementById('cashFlowCurrency').value,
+                occurred_at: document.getElementById('cashFlowDate').value || null,
+                notes: document.getElementById('cashFlowNotes').value.trim()
+            };
+            try {
+                const res = await fetch('/api/portfolio/cash-flow', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error || 'Could not save cash flow');
+                showToast(`${payload.flow_type === 'deposit' ? 'Deposit' : 'Withdrawal'} saved.`, 'success');
+                document.getElementById('cashFlowAmount').value = '';
+                document.getElementById('cashFlowDate').value = '';
+                document.getElementById('cashFlowNotes').value = '';
+                await loadPortfolioAnalytics();
+            } catch (e) {
+                showToast(`Cash flow failed: ${e.message}`, 'error');
+            }
+        }
+
+        async function submitManualEquitySnapshot(event) {
+            event.preventDefault();
+            const payload = {
+                account_id: document.getElementById('manualAccountId').value.trim(),
+                currency: document.getElementById('manualCurrency').value,
+                balance: Number(document.getElementById('manualBalance').value),
+                equity: Number(document.getElementById('manualEquity').value)
+            };
+            try {
+                const res = await fetch('/api/portfolio/manual-snapshot', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error || 'Manual snapshot failed');
+                showToast('Manual snapshot saved and labelled as unverified.', 'success');
+                await loadPortfolioAccounts(json.account_id);
+            } catch (e) { showToast(`Manual snapshot failed: ${e.message}`, 'error'); }
+        }
         // Trigger One-Click MT5 Sync
         async function triggerMT5Sync() {
             const days = document.getElementById("mt5Range").value;

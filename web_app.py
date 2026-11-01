@@ -5,6 +5,8 @@ Flask backend serving high-performance REST APIs and modern web dashboard.
 
 import os
 import sys
+import math
+import secrets
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
@@ -19,7 +21,8 @@ from calculators import TradingCalculator
 from models import TradeType, TradeStatus, AssetClass
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.config["SECRET_KEY"] = "trading-journal-pro-secret-2026"
+app.config["SECRET_KEY"] = os.environ.get("TRADING_JOURNAL_SECRET_KEY") or secrets.token_hex(32)
+app.config["TRUSTED_HOSTS"] = ["localhost", "127.0.0.1"]
 app.config["UPLOAD_FOLDER"] = str(BASE_DIR / "screenshots")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max image upload
 
@@ -47,6 +50,48 @@ def favicon():
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _json_object():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise ValueError("A JSON object is required")
+    return data
+
+
+def _finite_number(value, field_name: str, *, minimum=None, allow_zero=True) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"{field_name} must be a valid number")
+    if not math.isfinite(number):
+        raise ValueError(f"{field_name} must be finite")
+    if minimum is not None and (number < minimum or (not allow_zero and number == minimum)):
+        qualifier = "greater than" if not allow_zero else "at least"
+        raise ValueError(f"{field_name} must be {qualifier} {minimum}")
+    return number
+
+
+def _bounded_text(value, field_name: str, *, max_length: int, default="") -> str:
+    if value is None:
+        value = default
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be text")
+    value = value.strip()
+    if len(value) > max_length:
+        raise ValueError(f"{field_name} must be {max_length} characters or fewer")
+    return value
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/")
@@ -122,27 +167,33 @@ def get_trades():
 def create_trade():
     """Create a new trade record"""
     try:
-        data = request.json or {}
-        symbol = data.get("symbol", "").strip().upper()
+        data = _json_object()
+        symbol = _bounded_text(data.get("symbol"), "Symbol", max_length=32).upper()
         if not symbol:
-            return jsonify({"success": False, "error": "Symbol is required"}), 400
-
+            raise ValueError("Symbol is required")
+        trade_type = _bounded_text(data.get("trade_type", "BUY"), "Trade type", max_length=16).upper()
+        asset_class = _bounded_text(data.get("asset_class", "STOCKS"), "Asset class", max_length=20).upper()
+        if trade_type not in TradeType.__members__:
+            raise ValueError("Unsupported trade type")
+        if asset_class not in AssetClass.__members__:
+            raise ValueError("Unsupported asset class")
+        rating = int(_finite_number(data.get("rating", 4), "Rating", minimum=1))
+        discipline_rating = int(_finite_number(data.get("discipline_rating", 5), "Discipline rating", minimum=1))
+        if rating > 5 or discipline_rating > 5:
+            raise ValueError("Ratings must be between 1 and 5")
         trade = service.create_trade(
-            symbol=symbol,
-            trade_type=data.get("trade_type", "BUY"),
-            asset_class=data.get("asset_class", "STOCKS"),
-            quantity=float(data.get("quantity", 0)),
-            entry_price=float(data.get("entry_price", 0)),
-            stop_loss=float(data["stop_loss"]) if data.get("stop_loss") else None,
-            take_profit=float(data["take_profit"]) if data.get("take_profit") else None,
-            commission=float(data.get("commission", 0.0)),
-            swap=float(data.get("swap", 0.0)),
-            setup=data.get("setup", "Discretionary"),
-            rating=int(data.get("rating", 4)),
-            discipline_rating=int(data.get("discipline_rating", 5)),
-            tags=data.get("tags", ""),
-            session=data.get("session", "NY"),
-            notes=data.get("notes", ""),
+            symbol=symbol, trade_type=trade_type, asset_class=asset_class,
+            quantity=_finite_number(data.get("quantity"), "Quantity", minimum=0, allow_zero=False),
+            entry_price=_finite_number(data.get("entry_price"), "Entry price", minimum=0, allow_zero=False),
+            stop_loss=_finite_number(data["stop_loss"], "Stop loss", minimum=0, allow_zero=False) if data.get("stop_loss") not in (None, "") else None,
+            take_profit=_finite_number(data["take_profit"], "Take profit", minimum=0, allow_zero=False) if data.get("take_profit") not in (None, "") else None,
+            commission=_finite_number(data.get("commission", 0), "Commission", minimum=0),
+            swap=_finite_number(data.get("swap", 0), "Swap"),
+            setup=_bounded_text(data.get("setup", "Discretionary"), "Setup", max_length=80),
+            rating=rating, discipline_rating=discipline_rating,
+            tags=_bounded_text(data.get("tags", ""), "Tags", max_length=500),
+            session=_bounded_text(data.get("session", "NY"), "Session", max_length=32),
+            notes=_bounded_text(data.get("notes", ""), "Notes", max_length=5000),
             status=TradeStatus.OPEN
         )
         return jsonify({"success": True, "data": trade.to_dict()})
@@ -163,11 +214,11 @@ def get_single_trade(trade_id):
 def close_trade(trade_id):
     """Close an open trade"""
     try:
-        data = request.json or {}
-        exit_price = float(data.get("exit_price", 0))
-        commission = float(data.get("commission", 0.0))
-        swap = float(data.get("swap", 0.0))
-        notes = data.get("notes")
+        data = _json_object()
+        exit_price = _finite_number(data.get("exit_price"), "Exit price", minimum=0, allow_zero=False)
+        commission = _finite_number(data.get("commission", 0.0), "Commission", minimum=0)
+        swap = _finite_number(data.get("swap", 0.0), "Swap")
+        notes = _bounded_text(data.get("notes"), "Notes", max_length=5000) or None
 
         closed = service.close_trade(
             trade_id=trade_id,
@@ -204,23 +255,143 @@ def mt5_status():
 def mt5_sync():
     """Trigger automated trade synchronization from MT5"""
     try:
-        data = request.json or {}
-        days_back = int(data.get("days", 60))
+        data = _json_object()
+        days_back = int(_finite_number(data.get("days", 60), "Days", minimum=1))
+        if days_back > 3650:
+            raise ValueError("Days must not exceed 3650")
         result = service.sync_mt5(days_back=days_back)
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/mt5/snapshot", methods=["POST"])
+def mt5_equity_snapshot():
+    """Capture the current broker-reported MT5 account balance and equity."""
+    try:
+        result = service.capture_mt5_equity_snapshot()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 503
+
+
+@app.route("/api/portfolio/accounts", methods=["GET"])
+def portfolio_accounts():
+    """List account IDs with stored equity snapshots."""
+    try:
+        return jsonify({"success": True, "data": service.get_portfolio_accounts()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/portfolio/performance", methods=["GET"])
+def portfolio_performance():
+    """Return account equity history and cash-flow-adjusted performance."""
+    try:
+        account_id = request.args.get("account_id")
+        if not account_id:
+            accounts = service.get_portfolio_accounts()
+            account_id = accounts[0]["account_id"] if accounts else "default"
+        result = service.get_portfolio_performance(account_id=account_id)
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/api/portfolio/cash-flow", methods=["POST"])
+def portfolio_cash_flow():
+    """Record a deposit or withdrawal for an existing portfolio account."""
+    try:
+        data = _json_object()
+        account_id = _bounded_text(data.get("account_id"), "Account", max_length=128)
+        flow_type = _bounded_text(data.get("flow_type"), "Flow type", max_length=16).lower()
+        currency = _bounded_text(data.get("currency"), "Currency", max_length=8).upper()
+        notes = _bounded_text(data.get("notes"), "Notes", max_length=500)
+        if not account_id:
+            return jsonify({"success": False, "error": "Account is required"}), 400
+        if flow_type not in ("deposit", "withdrawal"):
+            return jsonify({"success": False, "error": "Flow type must be deposit or withdrawal"}), 400
+        if not currency:
+            return jsonify({"success": False, "error": "Currency is required"}), 400
+        if len(notes) > 500:
+            return jsonify({"success": False, "error": "Notes must be 500 characters or fewer"}), 400
+
+        accounts = service.get_portfolio_accounts()
+        account = next((item for item in accounts if item.get("account_id") == account_id), None)
+        if account is None:
+            return jsonify({"success": False, "error": "Select an existing portfolio account"}), 400
+        account_currency = str(account.get("currency") or "").strip().upper()
+        if account_currency and currency != account_currency:
+            return jsonify({"success": False, "error": f"Currency must match the account currency ({account_currency})"}), 400
+
+        amount = _finite_number(data.get("amount"), "Amount", minimum=0, allow_zero=False)
+
+        occurred_raw = data.get("occurred_at")
+        if occurred_raw:
+            occurred_at = datetime.fromisoformat(str(occurred_raw))
+            if occurred_at.tzinfo is None:
+                occurred_at = occurred_at.astimezone()
+        else:
+            occurred_at = datetime.now().astimezone()
+
+        flow_id = service.record_portfolio_cash_flow(
+            occurred_at=occurred_at, flow_type=flow_type, amount=amount,
+            account_id=account_id, currency=currency, notes=notes,
+        )
+        return jsonify({
+            "success": True, "flow_id": flow_id, "account_id": account_id,
+            "flow_type": flow_type, "amount": amount, "currency": currency,
+            "occurred_at": occurred_at.isoformat(), "notes": notes,
+        })
+    except (TypeError, ValueError, OverflowError) as e:
+        return jsonify({"success": False, "error": str(e) or "Invalid cash-flow details"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/api/portfolio/manual-snapshot", methods=["POST"])
+def manual_equity_snapshot():
+    """Record explicitly labelled user-entered equity; never mark it broker-verified."""
+    try:
+        data = _json_object()
+        account_label = _bounded_text(data.get("account_id", "manual-account"), "Account label", max_length=100)
+        currency = _bounded_text(data.get("currency"), "Currency", max_length=8).upper()
+        if not account_label:
+            return jsonify({"success": False, "error": "Account label is required"}), 400
+        # Namespace manual accounts so user-entered values cannot impersonate a broker account ID.
+        account_id = account_label if account_label.startswith("manual:") else f"manual:{account_label}"
+        if not currency:
+            return jsonify({"success": False, "error": "Currency is required"}), 400
+        balance = _finite_number(data.get("balance"), "Balance", minimum=0)
+        equity = _finite_number(data.get("equity"), "Equity", minimum=0)
+        captured_at = datetime.now().astimezone()
+        snapshot_id = service.record_equity_snapshot(
+            captured_at=captured_at, balance=balance, equity=equity,
+            account_id=account_id, currency=currency, source="manual",
+            notes="Manually entered; not broker verified.",
+        )
+        return jsonify({
+            "success": True, "snapshot_id": snapshot_id, "account_id": account_id,
+            "captured_at": captured_at.isoformat(), "balance": balance,
+            "equity": equity, "currency": currency, "source": "manual",
+        })
+    except (KeyError, TypeError, ValueError) as e:
+        return jsonify({"success": False, "error": str(e) or "Balance and equity must be valid numbers"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/api/calc/position-size", methods=["POST"])
 def calc_position():
     """Calculate position sizing based on risk percentage"""
     try:
-        data = request.json or {}
-        account = float(data.get("account_size", 10000))
-        risk_pct = float(data.get("risk_pct", 1.0))
-        entry = float(data.get("entry_price", 100))
-        stop = float(data.get("stop_loss", 95))
+        data = _json_object()
+        account = _finite_number(data.get("account_size", 10000), "Account size", minimum=0, allow_zero=False)
+        risk_pct = _finite_number(data.get("risk_pct", 1.0), "Risk percentage", minimum=0, allow_zero=False)
+        if risk_pct > 100:
+            raise ValueError("Risk percentage must not exceed 100")
+        entry = _finite_number(data.get("entry_price", 100), "Entry price", minimum=0, allow_zero=False)
+        stop = _finite_number(data.get("stop_loss", 95), "Stop loss", minimum=0, allow_zero=False)
 
         res = TradingCalculator.calculate_position_size(
             account_size=account,
@@ -245,15 +416,22 @@ def daily_logs():
         return jsonify({"success": True, "data": logs})
 
     try:
-        data = request.json or {}
-        date_str = data.get("date") or datetime.now().strftime("%Y-%m-%d")
+        data = _json_object()
+        date_str = _bounded_text(data.get("date") or datetime.now().strftime("%Y-%m-%d"), "Date", max_length=10)
+        datetime.strptime(date_str, "%Y-%m-%d")
+        mindset_score = int(_finite_number(data.get("mindset_score", 5), "Mindset score", minimum=1))
+        if mindset_score > 5:
+            raise ValueError("Mindset score must be between 1 and 5")
+        rules_checked = data.get("rules_checked", True)
+        if not isinstance(rules_checked, bool):
+            raise ValueError("Rules checked must be true or false")
         service.save_daily_log(
             date_str=date_str,
-            market_bias=data.get("market_bias", "Neutral"),
-            news_events=data.get("news_events", ""),
-            rules_checked=data.get("rules_checked", True),
-            mindset_score=int(data.get("mindset_score", 5)),
-            post_market_notes=data.get("post_market_notes", "")
+            market_bias=_bounded_text(data.get("market_bias", "Neutral"), "Market bias", max_length=40),
+            news_events=_bounded_text(data.get("news_events", ""), "News events", max_length=5000),
+            rules_checked=rules_checked,
+            mindset_score=mindset_score,
+            post_market_notes=_bounded_text(data.get("post_market_notes", ""), "Post-market notes", max_length=5000)
         )
         return jsonify({"success": True, "message": "Daily log saved"})
     except Exception as e:
@@ -268,9 +446,27 @@ def upload_screenshot(trade_id):
     file = request.files["image"]
     if file.filename == "" or not allowed_file(file.filename):
         return jsonify({"success": False, "error": "Invalid image file"}), 400
+    extension = file.filename.rsplit(".", 1)[1].lower()
+    header = file.stream.read(16)
+    file.stream.seek(0)
+    signatures = {
+        "png": header.startswith(b"\x89PNG\r\n\x1a\n"),
+        "jpg": header.startswith(b"\xff\xd8\xff"),
+        "jpeg": header.startswith(b"\xff\xd8\xff"),
+        "gif": header.startswith((b"GIF87a", b"GIF89a")),
+        "webp": len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP",
+    }
+    if not signatures.get(extension, False):
+        return jsonify({"success": False, "error": "File content does not match an allowed image type"}), 400
+    if not service.get_trade(trade_id):
+        return jsonify({"success": False, "error": "Trade not found"}), 404
 
     filename = secure_filename(f"{trade_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}")
-    save_path = Path(app.config["UPLOAD_FOLDER"]) / filename
+    upload_dir = Path(app.config["UPLOAD_FOLDER"]).resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    save_path = (upload_dir / filename).resolve()
+    if upload_dir not in save_path.parents:
+        return jsonify({"success": False, "error": "Invalid upload path"}), 400
     file.save(str(save_path))
 
     service.attach_screenshot(trade_id, filename)

@@ -53,12 +53,15 @@ def main():
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trading_journal.db")
     service = TradeService(db_path)
 
-    # Initialize with sample institutional trades if database is empty
-    if len(service.get_all_trades()) == 0:
-        print("Empty trading journal detected. Seeding realistic sample trades...")
-        service.seed_sample_data()
-
     args = sys.argv[1:]
+
+    # Demo data must be explicitly requested and must never be mixed into a real journal.
+    if "--demo" in args:
+        if service.get_all_trades():
+            print("Demo data not loaded: the journal already contains trades.")
+        else:
+            print("Loading sample trades for demo use...")
+            service.seed_sample_data()
     if "--gui" in args:
         launch_gui(service)
     elif "--cli" in args:

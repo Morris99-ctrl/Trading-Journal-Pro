@@ -18,7 +18,12 @@ class TradeAnalytics:
 
     def get_period_analysis(self, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """Analysis for trades closed within a specified date window"""
-        trades = self.db.get_all_trades(status=TradeStatus.CLOSED, start_date=start_date, end_date=end_date)
+        trades = self.db.get_all_trades(
+            status=TradeStatus.CLOSED,
+            start_date=start_date,
+            end_date=end_date,
+            date_basis="exit"
+        )
         return TradingCalculator.analyze_trade_series(trades)
 
     def get_win_loss_analysis(self) -> Dict[str, Any]:

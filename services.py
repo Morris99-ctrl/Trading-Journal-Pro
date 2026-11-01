@@ -12,6 +12,7 @@ from pathlib import Path
 from models import Trade, TradeType, TradeStatus, AssetClass
 from data import TradeDatabase
 from calculators import TradingCalculator
+from portfolio_analytics import calculate_portfolio_performance
 from mt5_service import MT5SyncService
 
 
@@ -60,15 +61,17 @@ class TradeService:
         symbol: Optional[str] = None,
         asset_class: Optional[AssetClass] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        date_basis: str = "entry"
     ) -> List[Trade]:
-        """Get all trades matching criteria"""
+        """Get matching trades; date_basis may be 'entry' or 'exit'."""
         return self.db.get_all_trades(
             status=status,
             symbol=symbol,
             asset_class=asset_class,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            date_basis=date_basis
         )
 
     def get_open_trades(self) -> List[Trade]:
@@ -120,7 +123,8 @@ class TradeService:
         trades = self.get_all_trades(
             status=TradeStatus.CLOSED,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            date_basis="exit"
         )
         return TradingCalculator.analyze_trade_series(trades, initial_balance=initial_balance)
 
@@ -137,9 +141,72 @@ class TradeService:
                 'end_date': end_date.isoformat() if end_date else None
             },
             'performance': performance,
-            'trades': self.get_all_trades(start_date=start_date, end_date=end_date)
+            'trades': self.get_all_trades(
+                start_date=start_date,
+                end_date=end_date,
+                date_basis="exit"
+            )
         }
 
+    # Portfolio-level equity and risk analytics
+    def record_equity_snapshot(
+        self, captured_at: datetime, balance: float, equity: float,
+        account_id: str = "default", currency: str = "",
+        source: str = "manual", notes: str = "",
+    ) -> int:
+        """Record an actual broker/account balance and equity observation."""
+        return self.db.add_equity_snapshot(
+            captured_at=captured_at, balance=balance, equity=equity,
+            account_id=account_id, currency=currency, source=source, notes=notes,
+        )
+
+    def record_portfolio_cash_flow(
+        self, occurred_at: datetime, flow_type: str, amount: float,
+        account_id: str = "default", currency: str = "", notes: str = "",
+    ) -> int:
+        """Record an external deposit or withdrawal, not a trading P&L event."""
+        return self.db.add_portfolio_cash_flow(
+            occurred_at=occurred_at, flow_type=flow_type, amount=amount,
+            account_id=account_id, currency=currency, notes=notes,
+        )
+
+    def get_portfolio_performance(
+        self, account_id: str = "default",
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """Return cash-flow-adjusted portfolio returns from stored equity snapshots."""
+        snapshots = self.db.get_equity_snapshots(account_id, start_date, end_date)
+        flows = self.db.get_portfolio_cash_flows(account_id, start_date, end_date)
+        normalized_flows = [
+            {"occurred_at": flow["occurred_at"], "type": flow["flow_type"], "amount": flow["amount"], "currency": flow["currency"]}
+            for flow in flows
+        ]
+        result = calculate_portfolio_performance(snapshots, normalized_flows)
+        result["account_id"] = account_id
+        result["currency"] = next((item["currency"] for item in snapshots if item["currency"]), "")
+        result["cash_flows"] = [
+            {"id": flow["id"], "occurred_at": flow["occurred_at"], "flow_type": flow["flow_type"],
+             "amount": flow["amount"], "currency": flow["currency"], "notes": flow["notes"]}
+            for flow in reversed(flows[-20:])
+        ]
+        result["equity_curve"] = [
+            {
+                "time": item["captured_at"], "balance": item["balance"],
+                "equity": item["equity"], "currency": item["currency"],
+                "source": item["source"],
+            }
+            for item in snapshots
+        ]
+        return result
+
+    def get_portfolio_accounts(self) -> List[Dict[str, Any]]:
+        """List accounts with equity history."""
+        return self.db.get_equity_accounts()
+
+    def capture_mt5_equity_snapshot(self) -> Dict[str, Any]:
+        """Capture and persist one verified MT5 account equity observation."""
+        return self.mt5_sync.capture_account_snapshot(self)
     # MetaTrader 5 Sync Methods
     def get_mt5_status(self) -> Dict[str, Any]:
         """Get live MT5 connection status"""

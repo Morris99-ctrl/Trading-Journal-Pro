@@ -3,6 +3,8 @@ MetaTrader 5 (MT5) Automated Synchronization Service
 Direct connection via MT5 Python IPC API to sync trades, orders, commissions, and swap fees.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from models import Trade, TradeType, TradeStatus, AssetClass
@@ -74,19 +76,121 @@ class MT5SyncService:
                 "message": f"Connection error: {str(e)}"
             }
 
+    def capture_account_snapshot(self, trade_service: TradeService, captured_at: Optional[datetime] = None) -> Dict[str, Any]:
+        """Capture broker-reported balance/equity and persist it as a verified snapshot."""
+        if not self.is_available():
+            raise RuntimeError("MetaTrader5 module is not installed.")
+
+        mt5 = self._mt5
+        if not mt5.initialize(timeout=5000):
+            err = mt5.last_error()
+            raise ConnectionError(f"Could not connect to MetaTrader 5: {err}")
+
+        try:
+            account = mt5.account_info()
+            if account is None:
+                raise ConnectionError(f"MT5 returned no account information: {mt5.last_error()}")
+
+            login = getattr(account, "login", None)
+            server = str(getattr(account, "server", "") or "").strip()
+            currency = str(getattr(account, "currency", "") or "").strip().upper()
+            if login is None or not server or not currency:
+                raise ValueError("MT5 account identity or account currency is incomplete.")
+
+            timestamp = captured_at or datetime.now().astimezone()
+            account_id = f"{login}@{server}"
+            balance = float(account.balance)
+            equity = float(account.equity)
+            snapshot_id = trade_service.record_equity_snapshot(
+                captured_at=timestamp, balance=balance, equity=equity,
+                account_id=account_id, currency=currency, source="mt5",
+                notes="Captured from MT5 account_info().",
+            )
+            return {
+                "success": True, "snapshot_id": snapshot_id, "account_id": account_id,
+                "captured_at": timestamp.isoformat(), "balance": balance,
+                "equity": equity, "currency": currency, "source": "mt5",
+            }
+        finally:
+            mt5.shutdown()
+
     @staticmethod
     def classify_asset_class(symbol: str) -> AssetClass:
         """Classify symbol into institutional asset class"""
         s = symbol.upper()
         if any(m in s for m in ["XAU", "XAG", "GOLD", "SILVER", "OIL", "WTI", "BRENT", "NATGAS"]):
             return AssetClass.COMMODITIES
-        if any(idx in s for idx in ["US30", "NAS100", "SPX500", "GER40", "UK100", "DJ30", "NDX", "DAX", "WS30", "USTEC"]):
+        if any(idx in s for idx in ["US30", "US100", "NAS100", "SPX500", "GER40", "UK100", "DJ30", "NDX", "DAX", "WS30", "USTEC"]):
             return AssetClass.INDICES
         if any(c in s for c in ["BTC", "ETH", "SOL", "XRP", "DOGE", "USDT"]):
             return AssetClass.CRYPTO
         if any(fx in s for fx in ["EUR", "GBP", "USD", "JPY", "AUD", "NZD", "CAD", "CHF"]):
             return AssetClass.FOREX
         return AssetClass.STOCKS
+
+    @staticmethod
+    def aggregate_position_deals(deals: List[Any]) -> Optional[Dict[str, Any]]:
+        """Aggregate MT5 deals for one position without assuming price × volume is P&L.
+
+        MT5 deal profit, commission, swap, and fee are signed account-currency
+        amounts. Broker net P&L is the sum of those fields across every deal.
+        Reversal deals are rejected because one position ticket can then encode
+        more than one exposure lifecycle and needs a dedicated split model.
+        """
+        if not deals:
+            return None
+
+        ordered = sorted(deals, key=lambda deal: (getattr(deal, "time_msc", 0), getattr(deal, "time", 0), getattr(deal, "ticket", 0)))
+        if any(getattr(deal, "entry", None) == 2 for deal in ordered):  # DEAL_ENTRY_INOUT
+            return None
+
+        entries = [d for d in ordered if getattr(d, "entry", None) == 0]  # DEAL_ENTRY_IN
+        exits = [d for d in ordered if getattr(d, "entry", None) in (1, 3)]  # OUT / OUT_BY
+        if not entries:
+            return None
+
+        entry_volume = sum(float(getattr(d, "volume", 0.0) or 0.0) for d in entries)
+        exit_volume = sum(float(getattr(d, "volume", 0.0) or 0.0) for d in exits)
+        if entry_volume <= 0:
+            return None
+
+        weighted_entry = sum(float(d.price) * float(d.volume) for d in entries) / entry_volume
+        weighted_exit = (
+            sum(float(d.price) * float(d.volume) for d in exits) / exit_volume
+            if exit_volume > 0 else None
+        )
+        volume_tolerance = max(1e-8, entry_volume * 1e-6)
+        # Over-exit volume indicates incomplete, duplicated, or inconsistent history.
+        # Do not silently classify it as a closed trade.
+        if exit_volume > entry_volume + volume_tolerance:
+            return None
+        closed = abs(exit_volume - entry_volume) <= volume_tolerance
+        gross_pnl = sum(float(getattr(d, "profit", 0.0) or 0.0) for d in ordered)
+        commission_signed = sum(float(getattr(d, "commission", 0.0) or 0.0) for d in ordered)
+        swap = sum(float(getattr(d, "swap", 0.0) or 0.0) for d in ordered)
+        fee = sum(float(getattr(d, "fee", 0.0) or 0.0) for d in ordered)
+        net_pnl = gross_pnl + commission_signed + swap + fee
+
+        first_entry = entries[0]
+        last_exit = exits[-1] if closed and exits else None
+        return {
+            "symbol": first_entry.symbol,
+            "direction": TradeType.BUY if first_entry.type == 0 else TradeType.SHORT,
+            "entry_volume": entry_volume,
+            "exit_volume": exit_volume,
+            "remaining_volume": max(0.0, entry_volume - exit_volume),
+            "quantity": entry_volume if closed else max(0.0, entry_volume - exit_volume),
+            "entry_price": weighted_entry,
+            "exit_price": weighted_exit if closed else None,
+            "entry_time": datetime.fromtimestamp(first_entry.time),
+            "exit_time": datetime.fromtimestamp(last_exit.time) if last_exit else None,
+            "status": TradeStatus.CLOSED if closed else TradeStatus.OPEN,
+            "commission": abs(commission_signed),
+            "swap": swap,
+            "broker_gross_pnl": gross_pnl if closed else None,
+            "broker_net_pnl": net_pnl if closed else None,
+            "deal_count": len(ordered),
+        }
 
     def sync_trades(
         self,
@@ -123,129 +227,84 @@ class MT5SyncService:
                     "message": f"No deals returned: {err}"
                 }
 
-            # Filter out non-trade balance operations (position_id == 0)
-            trade_deals = [d for d in deals if d.position_id and d.position_id > 0 and d.symbol]
+            # Ignore balance/credit operations that do not belong to a position.
+            trade_deals = [d for d in deals if getattr(d, "position_id", 0) and d.position_id > 0 and getattr(d, "symbol", None)]
 
-            # Group deals by position_id
             positions_map: Dict[int, List[Any]] = {}
-            for d in trade_deals:
-                pid = d.position_id
-                if pid not in positions_map:
-                    positions_map[pid] = []
-                positions_map[pid].append(d)
+            for deal in trade_deals:
+                positions_map.setdefault(int(deal.position_id), []).append(deal)
 
             imported_count = 0
             updated_count = 0
             skipped_count = 0
+            unsupported_count = 0
             total_synced_pnl = 0.0
 
-            for pos_id, p_deals in positions_map.items():
-                # Sort deals chronologically
-                p_deals.sort(key=lambda x: x.time)
+            for pos_id, position_deals in positions_map.items():
+                aggregate = self.aggregate_position_deals(position_deals)
+                if aggregate is None:
+                    unsupported_count += 1
+                    continue
 
-                # Find entry deal (entry == 0 or DEAL_ENTRY_IN)
-                entry_deal = next((d for d in p_deals if getattr(d, 'entry', 0) == 0), p_deals[0])
-                exit_deal = next((d for d in p_deals if getattr(d, 'entry', 0) == 1), None)
-
-                symbol = entry_deal.symbol
-                asset_class = self.classify_asset_class(symbol)
-                direction = TradeType.BUY if entry_deal.type == 0 else TradeType.SHORT
-                quantity = entry_deal.volume
-                entry_price = entry_deal.price
-                entry_time = datetime.fromtimestamp(entry_deal.time)
-
-                # Total commissions, swap, and net profit across deals for this position
-                total_comm = abs(sum(d.commission for d in p_deals))
-                total_swap = sum(d.swap for d in p_deals)
-                total_profit = sum(d.profit for d in p_deals)
-
-                # Check for Stop Loss & Take Profit from original orders
+                symbol = aggregate["symbol"]
+                entry_time = aggregate["entry_time"]
                 stop_loss = None
                 take_profit = None
                 try:
                     orders = mt5.history_orders_get(position=pos_id)
-                    if orders and len(orders) > 0:
-                        first_order = orders[0]
-                        if first_order.sl and first_order.sl > 0:
+                    if orders:
+                        first_order = sorted(orders, key=lambda order: getattr(order, "time_setup", 0))[0]
+                        if getattr(first_order, "sl", 0) and first_order.sl > 0:
                             stop_loss = first_order.sl
-                        if first_order.tp and first_order.tp > 0:
+                        if getattr(first_order, "tp", 0) and first_order.tp > 0:
                             take_profit = first_order.tp
                 except Exception:
                     pass
 
                 trade_id = f"MT5-{pos_id}"
                 existing_trade = trade_service.get_trade(trade_id)
-
-                if exit_deal:
-                    exit_price = exit_deal.price
-                    exit_time = datetime.fromtimestamp(exit_deal.time)
-                    status = TradeStatus.CLOSED
-                else:
-                    exit_price = None
-                    exit_time = None
-                    status = TradeStatus.OPEN
+                fields = {
+                    "symbol": symbol,
+                    "trade_type": aggregate["direction"],
+                    "asset_class": self.classify_asset_class(symbol),
+                    "quantity": aggregate["quantity"],
+                    "entry_price": aggregate["entry_price"],
+                    "exit_price": aggregate["exit_price"],
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "commission": aggregate["commission"],
+                    "swap": aggregate["swap"],
+                    "entry_time": aggregate["entry_time"],
+                    "exit_time": aggregate["exit_time"],
+                    "status": aggregate["status"],
+                    "broker_gross_pnl": aggregate["broker_gross_pnl"],
+                    "broker_net_pnl": aggregate["broker_net_pnl"],
+                }
 
                 if existing_trade:
-                    # If trade transitioned from OPEN to CLOSED or needs updating
-                    if existing_trade.status == TradeStatus.OPEN and status == TradeStatus.CLOSED:
-                        existing_trade.exit_price = exit_price
-                        existing_trade.exit_time = exit_time
-                        existing_trade.status = TradeStatus.CLOSED
-                        existing_trade.commission = total_comm
-                        existing_trade.swap = total_swap
-                        trade_service.update_trade(existing_trade)
-                        updated_count += 1
-                        total_synced_pnl += (existing_trade.net_pnl or 0.0)
-                    else:
-                        skipped_count += 1
-                else:
-                    # Create new synchronized trade
-                    new_trade = Trade(
-                        id=trade_id,
-                        symbol=symbol,
-                        trade_type=direction,
-                        asset_class=asset_class,
-                        quantity=quantity,
-                        entry_price=entry_price,
-                        exit_price=exit_price,
-                        stop_loss=stop_loss,
-                        take_profit=take_profit,
-                        commission=total_comm,
-                        swap=total_swap,
-                        entry_time=entry_time,
-                        exit_time=exit_time,
-                        status=status,
-                        setup="MT5 Automated Execution",
-                        rating=4,
-                        discipline_rating=5,
-                        session="London" if 7 <= entry_time.hour <= 15 else ("NY" if 13 <= entry_time.hour <= 21 else "Asian"),
-                        position_id=str(pos_id),
-                        notes=f"Auto-imported from MetaTrader 5 terminal. Position #{pos_id}"
-                    )
-                    trade_service.create_trade(
-                        id=new_trade.id,
-                        symbol=new_trade.symbol,
-                        trade_type=new_trade.trade_type,
-                        asset_class=new_trade.asset_class,
-                        quantity=new_trade.quantity,
-                        entry_price=new_trade.entry_price,
-                        exit_price=new_trade.exit_price,
-                        stop_loss=new_trade.stop_loss,
-                        take_profit=new_trade.take_profit,
-                        commission=new_trade.commission,
-                        swap=new_trade.swap,
-                        entry_time=new_trade.entry_time,
-                        exit_time=new_trade.exit_time,
-                        status=new_trade.status,
-                        setup=new_trade.setup,
-                        rating=new_trade.rating,
-                        discipline_rating=new_trade.discipline_rating,
-                        session=new_trade.session,
-                        position_id=new_trade.position_id,
-                        notes=new_trade.notes
-                    )
-                    imported_count += 1
-                    total_synced_pnl += (new_trade.net_pnl or 0.0)
+                    # Reconcile MT5-managed records on every sync so newly arrived
+                    # partial exits, fees, swaps, and final closes are not ignored.
+                    for name, value in fields.items():
+                        setattr(existing_trade, name, value)
+                    if not trade_service.update_trade(existing_trade):
+                        raise RuntimeError(f"Failed to persist MT5 reconciliation for position {pos_id}")
+                    updated_count += 1
+                    total_synced_pnl += existing_trade.net_pnl or 0.0
+                    continue
+
+                trade_service.create_trade(
+                    id=trade_id,
+                    **fields,
+                    setup="MT5 Automated Execution",
+                    rating=4,
+                    discipline_rating=5,
+                    session="London" if 7 <= entry_time.hour <= 15 else ("NY" if 13 <= entry_time.hour <= 21 else "Asian"),
+                    position_id=str(pos_id),
+                    notes=f"Auto-imported from MetaTrader 5 terminal. Position #{pos_id}; reconciled from {aggregate['deal_count']} deals."
+                )
+                imported_count += 1
+                if aggregate["broker_net_pnl"] is not None:
+                    total_synced_pnl += aggregate["broker_net_pnl"]
 
             mt5.shutdown()
             return {
@@ -254,9 +313,10 @@ class MT5SyncService:
                 "updated": updated_count,
                 "skipped": skipped_count,
                 "total_positions": len(positions_map),
+                "unsupported_positions": unsupported_count,
                 "total_deals_scanned": len(deals),
                 "total_pnl": round(total_synced_pnl, 2),
-                "message": f"Sync complete! {imported_count} new trades imported, {updated_count} updated, {skipped_count} already up-to-date."
+                "message": f"Sync complete! {imported_count} new trades imported, {updated_count} reconciled, {skipped_count} skipped, {unsupported_count} unsupported reversal/malformed positions skipped."
             }
 
         except Exception as e:

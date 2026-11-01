@@ -58,6 +58,8 @@ class Trade:
     session: str = "NY"  # "London", "NY", "Asian", "Overlap"
     position_id: Optional[str] = None  # MT5 Ticket / Broker ID
     notes: str = ""
+    broker_gross_pnl: Optional[float] = None
+    broker_net_pnl: Optional[float] = None
 
     def __post_init__(self):
         if self.entry_time is None:
@@ -99,16 +101,23 @@ class Trade:
     @property
     def gross_pnl(self) -> Optional[float]:
         """Realized gross P&L if closed, else None"""
-        if self.status != TradeStatus.CLOSED or self.exit_price is None:
+        if self.status != TradeStatus.CLOSED:
+            return None
+        if self.broker_gross_pnl is not None:
+            return self.broker_gross_pnl
+        if self.exit_price is None:
             return None
         if self.is_long:
             return (self.exit_price - self.entry_price) * self.quantity
-        else:
-            return (self.entry_price - self.exit_price) * self.quantity
+        return (self.entry_price - self.exit_price) * self.quantity
 
     @property
     def net_pnl(self) -> Optional[float]:
-        """Realized net P&L after commission and swap fees"""
+        """Realized net P&L; broker-reported value takes precedence when available."""
+        if self.status != TradeStatus.CLOSED:
+            return None
+        if self.broker_net_pnl is not None:
+            return self.broker_net_pnl
         gross = self.gross_pnl
         if gross is None:
             return None
@@ -116,7 +125,14 @@ class Trade:
 
     @property
     def return_pct(self) -> Optional[float]:
-        """Percentage return on position capital"""
+        """Percentage return on a simple price × quantity notional.
+
+        This is only a rough manual-trade diagnostic. Broker-linked positions
+        need contract size, tick value, and account-currency conversion data to
+        define a defensible return denominator, so their return is unknown.
+        """
+        if self.position_id is not None or self.broker_gross_pnl is not None or self.broker_net_pnl is not None:
+            return None
         net = self.net_pnl
         if net is None or self.invested_capital == 0:
             return None
@@ -144,7 +160,15 @@ class Trade:
 
     @property
     def planned_total_risk(self) -> Optional[float]:
-        """Total dollar amount at risk based on stop loss"""
+        """Estimated cash risk for manual trades with a known unit multiplier.
+
+        MT5 volume is typically expressed in lots, and price distance × lots
+        is not a cash-risk calculation without the symbol contract/tick value.
+        Return unknown for broker-linked trades rather than publishing a false
+        risk estimate.
+        """
+        if self.position_id is not None or self.broker_gross_pnl is not None or self.broker_net_pnl is not None:
+            return None
         r_unit = self.planned_risk_per_unit
         if r_unit is None:
             return None
@@ -222,6 +246,8 @@ class Trade:
             "session": self.session,
             "position_id": self.position_id,
             "notes": self.notes,
+            "broker_gross_pnl": self.broker_gross_pnl,
+            "broker_net_pnl": self.broker_net_pnl,
             "net_pnl": round(self.net_pnl, 2) if self.net_pnl is not None else None,
             "gross_pnl": round(self.gross_pnl, 2) if self.gross_pnl is not None else None,
             "return_pct": round(self.return_pct, 2) if self.return_pct is not None else None,
